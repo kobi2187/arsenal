@@ -1,0 +1,122 @@
+## Bump Allocator
+## ==============
+##
+## A fast arena-style allocator. All allocations are served from a
+## contiguous memory block. Memory is freed all at once by resetting
+## the bump pointer.
+##
+## Performance: ~1 billion allocations/second
+## Use cases: Frame-based allocation, batch processing, short-lived objects
+
+type
+  BumpAllocator* = object
+    ## Fast arena allocator with O(1) allocation and O(1) deallocation.
+    buffer: ptr UncheckedArray[byte]
+    size: int
+    offset: int
+
+proc init*(_: typedesc[BumpAllocator], size: int): BumpAllocator =
+  ## Create a bump allocator with a fixed-size buffer.
+  ## All allocations must fit within this buffer.
+  ##
+  ## IMPLEMENTATION:
+  ## 1. Allocate aligned buffer
+  ## 2. Initialize offset to 0
+  ##
+  ## ```nim
+  ## result.size = size
+  ## result.offset = 0
+  ## result.buffer = cast[ptr UncheckedArray[byte]](
+  ##   alignedAlloc(size, 64)  # Cache line alignment
+  ## )
+  ## ```
+
+  result.size = size
+  result.offset = 0
+  # TODO: Allocate buffer
+
+proc `=destroy`*(a: var BumpAllocator) =
+  ## Free the allocator's buffer.
+  ## IMPLEMENTATION:
+  ## ```nim
+  ## if a.buffer != nil:
+  ##   alignedDealloc(a.buffer)
+  ##   a.buffer = nil
+  ## ```
+
+  # TODO: Free buffer
+
+proc alloc*(a: var BumpAllocator, size: int): pointer =
+  ## Allocate memory. Never fails - if out of space, returns nil.
+  ##
+  ## IMPLEMENTATION:
+  ## 1. Round up size to alignment boundary
+  ## 2. Check if we have enough space
+  ## 3. Bump the offset and return pointer
+  ##
+  ## ```nim
+  ## let alignedSize = (size + 7) and not 7  # 8-byte alignment
+  ##
+  ## if a.offset + alignedSize > a.size:
+  ##   return nil  # Out of memory
+  ##
+  ## result = addr a.buffer[a.offset]
+  ## a.offset += alignedSize
+  ## ```
+
+  # Stub implementation
+  return nil
+
+proc alloc*(a: var BumpAllocator, size: int, alignment: int): pointer =
+  ## Allocate with specific alignment.
+  ##
+  ## IMPLEMENTATION:
+  ## 1. Align current offset to alignment boundary
+  ## 2. Then allocate as normal
+  ##
+  ## ```nim
+  ## # Align offset to next alignment boundary
+  ## let alignedOffset = (a.offset + alignment - 1) and not (alignment - 1)
+  ## let padding = alignedOffset - a.offset
+  ##
+  ## if alignedOffset + size > a.size:
+  ##   return nil
+  ##
+  ## result = addr a.buffer[alignedOffset]
+  ## a.offset = alignedOffset + size
+  ## ```
+
+  # Stub implementation
+  return nil
+
+proc dealloc*(a: var BumpAllocator, p: pointer) {.inline.} =
+  ## No-op for bump allocator. Memory is freed by reset().
+  discard
+
+proc realloc*(a: var BumpAllocator, p: pointer, newSize: int): pointer {.inline.} =
+  ## Bump allocators don't support individual realloc.
+  ## Return nil to indicate failure.
+  return nil
+
+proc reset*(a: var BumpAllocator) {.inline.} =
+  ## Reset the allocator, freeing all allocated memory.
+  ## O(1) operation.
+  ##
+  ## IMPLEMENTATION:
+  ## ```nim
+  ## a.offset = 0
+  ## ```
+
+  a.offset = 0
+
+proc bytesUsed*(a: BumpAllocator): int {.inline.} =
+  ## Return number of bytes currently allocated.
+  a.offset
+
+proc bytesFree*(a: BumpAllocator): int {.inline.} =
+  ## Return number of bytes still available.
+  a.size - a.offset
+
+proc isEmpty*(a: BumpAllocator): bool {.inline.} =
+  ## Check if allocator has no allocations.
+  a.offset == 0
