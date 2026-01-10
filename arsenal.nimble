@@ -14,3 +14,12 @@ task test, "Run all tests":
 
 task bench, "Run benchmarks":
   exec "nim c -d:release -d:danger -r benchmarks/bench_all.nim"
+
+task format, "Format code with nimpretty":
+  exec "nimpretty src/ tests/ benchmarks/ examples/"
+
+task lint, "Check code formatting":
+  exec "nimpretty --check src/ tests/ benchmarks/ examples/"
+
+task docs, "Generate documentation":
+  exec "nim doc --outdir:docs/api src/arsenal.nim"
