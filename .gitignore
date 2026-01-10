@@ -1,0 +1,33 @@
+# Nim
+nimcache/
+*.exe
+*.pdb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+
+# Build artifacts
+bin/
+build/
+dist/
+
+# Test coverage
+*.lcov
+
+# Benchmarks
+benchmarks/results/
+*.bench
