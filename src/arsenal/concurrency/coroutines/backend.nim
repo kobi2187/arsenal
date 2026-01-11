@@ -10,12 +10,10 @@
 ## 3. Future: Pure Nim ASM implementation
 
 import std/os
-import ../platform/config
-from libaco import nil
-from minicoro import nil
-
-# Import the unified interface
-import coroutine except Coroutine  # Avoid name conflict
+import ../../platform/config
+import ./libaco
+import ./minicoro
+import ./coroutine
 
 # =============================================================================
 # Backend Selection

@@ -22,6 +22,12 @@ import std/options
 import ../platform/config
 
 type
+  Future*[T] = ref object
+    ## Placeholder for async result (simplified for now).
+    ## Full implementation would integrate with coroutine system.
+    completed*: bool
+    value*: T
+
   EventLoop* = ref object
     ## Central event loop for async I/O operations.
     ## Integrates with coroutine scheduler to resume coroutines

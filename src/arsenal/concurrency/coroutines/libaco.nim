@@ -79,6 +79,8 @@ proc aco_share_stack_destroy*(share_stack: ptr aco_share_stack_t) {.acoImport.}
 # Nim-Friendly Wrappers
 # =============================================================================
 
+import ./coroutine
+
 type
   AcoCoroutine* = object
     ## Nim wrapper for libaco coroutine
