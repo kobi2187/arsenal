@@ -38,18 +38,21 @@ type
   ChannelError* = object of CatchableError
     ## Error raised on invalid channel operations.
 
-  Waiter[T] = object
+  WaiterRef[T] = ref object
     ## A coroutine waiting on a channel operation.
+    ## Heap-allocated because coroutine stacks are shared and
+    ## stack pointers become invalid after yield.
     coro: Coroutine
-    valuePtr: ptr T
+    value: T            # For senders: the value to send
+    hasValue: bool      # For receivers: set to true when value is received
 
   Chan*[T] = ref object
     ## Unbuffered (synchronous) channel.
     ## Send and receive must rendezvous - each send blocks until
     ## a corresponding receive, and vice versa.
     state: ChannelState
-    sendWaiters: Deque[Waiter[T]]
-    recvWaiters: Deque[Waiter[T]]
+    sendWaiters: Deque[WaiterRef[T]]
+    recvWaiters: Deque[WaiterRef[T]]
     lock: Spinlock
 
   BufferedChan*[T] = ref object
@@ -59,8 +62,8 @@ type
     state: ChannelState
     buffer: Deque[T]
     capacity: int
-    sendWaiters: Deque[Waiter[T]]
-    recvWaiters: Deque[Waiter[T]]
+    sendWaiters: Deque[WaiterRef[T]]
+    recvWaiters: Deque[WaiterRef[T]]
     lock: Spinlock
 
 # =============================================================================
@@ -72,8 +75,8 @@ proc newChan*[T](): Chan[T] =
   ## All operations synchronize - send waits for receive.
   result = Chan[T](
     state: csOpen,
-    sendWaiters: initDeque[Waiter[T]](),
-    recvWaiters: initDeque[Waiter[T]](),
+    sendWaiters: initDeque[WaiterRef[T]](),
+    recvWaiters: initDeque[WaiterRef[T]](),
     lock: Spinlock.init()
   )
 
@@ -92,18 +95,20 @@ proc send*[T](ch: Chan[T], value: T) =
   if ch.recvWaiters.len > 0:
     # Direct transfer to waiting receiver
     let waiter = ch.recvWaiters.popFirst()
-    waiter.valuePtr[] = value
+    waiter.value = value
+    waiter.hasValue = true
     ch.lock.release()
     ready(waiter.coro)  # Wake receiver
   else:
     # No receiver ready - block until one arrives
-    var valueCopy = value
     let currentCoro = running()
     if currentCoro == nil:
       ch.lock.release()
       raise newException(ChannelError, "send called outside coroutine context")
 
-    ch.sendWaiters.addLast(Waiter[T](coro: currentCoro, valuePtr: addr valueCopy))
+    # Heap-allocate the waiter so it survives the yield
+    let waiter = WaiterRef[T](coro: currentCoro, value: value, hasValue: true)
+    ch.sendWaiters.addLast(waiter)
     ch.lock.release()
     coroYield()  # Suspend until receiver wakes us
 
@@ -118,7 +123,7 @@ proc recv*[T](ch: Chan[T]): T =
   if ch.sendWaiters.len > 0:
     # Direct transfer from waiting sender
     let waiter = ch.sendWaiters.popFirst()
-    result = waiter.valuePtr[]
+    result = waiter.value
     ch.lock.release()
     ready(waiter.coro)  # Wake sender
   elif ch.state == csClosed:
@@ -126,16 +131,17 @@ proc recv*[T](ch: Chan[T]): T =
     return default(T)  # Return zero value on closed channel
   else:
     # No sender ready - block until one arrives
-    var dest: T
     let currentCoro = running()
     if currentCoro == nil:
       ch.lock.release()
       raise newException(ChannelError, "recv called outside coroutine context")
 
-    ch.recvWaiters.addLast(Waiter[T](coro: currentCoro, valuePtr: addr dest))
+    # Heap-allocate the waiter so it survives the yield
+    let waiter = WaiterRef[T](coro: currentCoro, hasValue: false)
+    ch.recvWaiters.addLast(waiter)
     ch.lock.release()
     coroYield()  # Suspend until sender wakes us
-    result = dest
+    result = waiter.value
 
 proc tryRecv*[T](ch: Chan[T]): Option[T] =
   ## Try to receive without blocking. Returns none if no sender ready.
@@ -144,7 +150,7 @@ proc tryRecv*[T](ch: Chan[T]): Option[T] =
 
   if ch.sendWaiters.len > 0:
     let waiter = ch.sendWaiters.popFirst()
-    result = some(waiter.valuePtr[])
+    result = some(waiter.value)
     ch.lock.release()
     ready(waiter.coro)
   else:
@@ -162,7 +168,8 @@ proc trySend*[T](ch: Chan[T], value: T): bool =
 
   if ch.recvWaiters.len > 0:
     let waiter = ch.recvWaiters.popFirst()
-    waiter.valuePtr[] = value
+    waiter.value = value
+    waiter.hasValue = true
     ch.lock.release()
     ready(waiter.coro)
     result = true
@@ -180,7 +187,8 @@ proc close*[T](ch: Chan[T]) =
   # Wake all waiting receivers with default values
   while ch.recvWaiters.len > 0:
     let waiter = ch.recvWaiters.popFirst()
-    waiter.valuePtr[] = default(T)
+    waiter.value = default(T)
+    waiter.hasValue = true
     ready(waiter.coro)
 
   # Wake all waiting senders (they'll see closed state on retry)
@@ -207,8 +215,8 @@ proc newBufferedChan*[T](capacity: int): BufferedChan[T] =
     state: csOpen,
     buffer: initDeque[T](),
     capacity: capacity,
-    sendWaiters: initDeque[Waiter[T]](),
-    recvWaiters: initDeque[Waiter[T]](),
+    sendWaiters: initDeque[WaiterRef[T]](),
+    recvWaiters: initDeque[WaiterRef[T]](),
     lock: Spinlock.init()
   )
 
@@ -225,7 +233,8 @@ proc send*[T](ch: BufferedChan[T], value: T) =
   # If there's a waiting receiver and buffer is empty, transfer directly
   if ch.recvWaiters.len > 0 and ch.buffer.len == 0:
     let waiter = ch.recvWaiters.popFirst()
-    waiter.valuePtr[] = value
+    waiter.value = value
+    waiter.hasValue = true
     ch.lock.release()
     ready(waiter.coro)
   elif ch.buffer.len < ch.capacity:
@@ -234,13 +243,13 @@ proc send*[T](ch: BufferedChan[T], value: T) =
     ch.lock.release()
   else:
     # Buffer full - block until space available
-    var valueCopy = value
     let currentCoro = running()
     if currentCoro == nil:
       ch.lock.release()
       raise newException(ChannelError, "send called outside coroutine context")
 
-    ch.sendWaiters.addLast(Waiter[T](coro: currentCoro, valuePtr: addr valueCopy))
+    let waiter = WaiterRef[T](coro: currentCoro, value: value, hasValue: true)
+    ch.sendWaiters.addLast(waiter)
     ch.lock.release()
     coroYield()
 
@@ -257,7 +266,7 @@ proc recv*[T](ch: BufferedChan[T]): T =
     # If there's a waiting sender, move their value to buffer
     if ch.sendWaiters.len > 0:
       let waiter = ch.sendWaiters.popFirst()
-      ch.buffer.addLast(waiter.valuePtr[])
+      ch.buffer.addLast(waiter.value)
       ch.lock.release()
       ready(waiter.coro)
     else:
@@ -265,7 +274,7 @@ proc recv*[T](ch: BufferedChan[T]): T =
   elif ch.sendWaiters.len > 0:
     # Take directly from waiting sender
     let waiter = ch.sendWaiters.popFirst()
-    result = waiter.valuePtr[]
+    result = waiter.value
     ch.lock.release()
     ready(waiter.coro)
   elif ch.state == csClosed:
@@ -273,16 +282,16 @@ proc recv*[T](ch: BufferedChan[T]): T =
     return default(T)
   else:
     # Empty and no senders - block
-    var dest: T
     let currentCoro = running()
     if currentCoro == nil:
       ch.lock.release()
       raise newException(ChannelError, "recv called outside coroutine context")
 
-    ch.recvWaiters.addLast(Waiter[T](coro: currentCoro, valuePtr: addr dest))
+    let waiter = WaiterRef[T](coro: currentCoro, hasValue: false)
+    ch.recvWaiters.addLast(waiter)
     ch.lock.release()
     coroYield()
-    result = dest
+    result = waiter.value
 
 proc tryRecv*[T](ch: BufferedChan[T]): Option[T] =
   ## Try to receive without blocking.
@@ -293,14 +302,14 @@ proc tryRecv*[T](ch: BufferedChan[T]): Option[T] =
     result = some(ch.buffer.popFirst())
     if ch.sendWaiters.len > 0:
       let waiter = ch.sendWaiters.popFirst()
-      ch.buffer.addLast(waiter.valuePtr[])
+      ch.buffer.addLast(waiter.value)
       ch.lock.release()
       ready(waiter.coro)
     else:
       ch.lock.release()
   elif ch.sendWaiters.len > 0:
     let waiter = ch.sendWaiters.popFirst()
-    result = some(waiter.valuePtr[])
+    result = some(waiter.value)
     ch.lock.release()
     ready(waiter.coro)
   else:
@@ -318,7 +327,8 @@ proc trySend*[T](ch: BufferedChan[T], value: T): bool =
 
   if ch.recvWaiters.len > 0 and ch.buffer.len == 0:
     let waiter = ch.recvWaiters.popFirst()
-    waiter.valuePtr[] = value
+    waiter.value = value
+    waiter.hasValue = true
     ch.lock.release()
     ready(waiter.coro)
     result = true
@@ -339,7 +349,8 @@ proc close*[T](ch: BufferedChan[T]) =
   # Wake all waiting receivers with default values
   while ch.recvWaiters.len > 0:
     let waiter = ch.recvWaiters.popFirst()
-    waiter.valuePtr[] = default(T)
+    waiter.value = default(T)
+    waiter.hasValue = true
     ready(waiter.coro)
 
   # Wake all waiting senders
