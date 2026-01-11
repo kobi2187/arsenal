@@ -1,141 +1,141 @@
 ## minicoro Backend - Portable Coroutine Library
 ## ==============================================
 ##
-## Bindings to minicoro - a minimal, portable coroutine library.
+## Bindings to minicoro - a single-header, portable coroutine library.
 ## Works on all platforms including Windows.
 ##
 ## Features:
 ## - Single header library (easy to integrate)
-## - Portable across architectures
-## - Good performance (~20-50ns switches)
+## - Cross-platform (Windows, Linux, macOS, ARM, RISC-V, WebAssembly)
+## - Good performance (~20-50ns context switches)
+## - Supports custom allocators
+## - Storage system for passing values
 ##
-## Limitations:
-## - Slightly slower than libaco
-## - Dedicated stacks (more memory usage)
+## Usage:
+## - On Unix: uses assembly (x86_64, ARM64, RISC-V) or ucontext fallback
+## - On Windows: uses assembly (x86_64) or Windows fibers
 
-{.pragma: mcoImport, importc, header: "<minicoro.h>".}
+import std/os
 
 # =============================================================================
-# minicoro Types (Direct Bindings)
+# Compile minicoro (header-only, needs MINICORO_IMPL defined once)
+# =============================================================================
+
+const minicoroPath = currentSourcePath().parentDir() / ".." / ".." / ".." / ".." / "vendor" / "minicoro"
+
+# Create a C file that includes minicoro.h with MINICORO_IMPL
+# This is the standard way to use header-only libraries
+{.emit: """
+#define MINICORO_IMPL
+#include "minicoro.h"
+""".}
+
+{.passC: "-I" & minicoroPath.}
+
+# =============================================================================
+# minicoro Types
 # =============================================================================
 
 type
-  mco_coro* {.mcoImport.} = object
+  McoState* {.importc: "mco_state", header: "minicoro.h".} = enum
+    ## Coroutine states
+    MCO_DEAD = 0      ## Finished or uninitialized
+    MCO_NORMAL = 1    ## Active but not running (resumed another)
+    MCO_RUNNING = 2   ## Currently executing
+    MCO_SUSPENDED = 3 ## Suspended (yielded or not started)
+
+  McoResult* {.importc: "mco_result", header: "minicoro.h".} = enum
+    ## Result codes from minicoro operations
+    MCO_SUCCESS = 0
+    MCO_GENERIC_ERROR
+    MCO_INVALID_POINTER
+    MCO_INVALID_COROUTINE
+    MCO_NOT_SUSPENDED
+    MCO_NOT_RUNNING
+    MCO_MAKE_CONTEXT_ERROR
+    MCO_SWITCH_CONTEXT_ERROR
+    MCO_NOT_ENOUGH_SPACE
+    MCO_OUT_OF_MEMORY
+    MCO_INVALID_ARGUMENTS
+    MCO_INVALID_OPERATION
+    MCO_STACK_OVERFLOW
+
+  McoFunc* = proc(co: ptr McoCoro) {.cdecl.}
+    ## Coroutine entry function type
+
+  McoCoro* {.importc: "mco_coro", header: "minicoro.h", incompleteStruct.} = object
     ## Opaque coroutine handle
 
-  mco_desc* {.mcoImport.} = object
+  McoDesc* {.importc: "mco_desc", header: "minicoro.h".} = object
     ## Coroutine creation descriptor
-    func*: proc(coro: ptr mco_coro) {.cdecl.}  ## Entry point
-    user_data*: pointer                         ## User data
-    stack_size*: csize_t                        ## Stack size in bytes
-
-  mco_state* {.mcoImport.} = enum
-    ## Coroutine states
-    MCO_DEAD
-    MCO_NORMAL
-    MCO_SUSPENDED
+    `func`*: McoFunc       ## Entry point function
+    user_data*: pointer    ## User data pointer
+    alloc_cb*: pointer     ## Custom allocator (optional)
+    dealloc_cb*: pointer   ## Custom deallocator (optional)
+    allocator_data*: pointer
+    storage_size*: csize_t ## Storage buffer size
+    coro_size*: csize_t    ## Internal
+    stack_size*: csize_t   ## Stack size in bytes
 
 # =============================================================================
-# minicoro Functions (Direct Bindings)
+# minicoro Functions
 # =============================================================================
 
-proc mco_create*(coro: ptr ptr mco_coro, desc: ptr mco_desc): cint {.mcoImport.}
+proc mco_desc_init*(fn: McoFunc, stack_size: csize_t): McoDesc {.cdecl, importc, header: "minicoro.h".}
+  ## Initialize a coroutine descriptor.
+  ## stack_size: 0 for default (56KB), or custom size
+
+proc mco_create*(out_co: ptr ptr McoCoro, desc: ptr McoDesc): McoResult {.cdecl, importc, header: "minicoro.h".}
   ## Create a new coroutine.
-  ## coro: Output parameter for coroutine handle
+  ## out_co: Output pointer for coroutine handle
   ## desc: Creation parameters
-  ## Returns 0 on success
+  ## Returns MCO_SUCCESS on success
 
-proc mco_resume*(coro: ptr mco_coro): cint {.mcoImport.}
-  ## Resume a coroutine.
-  ## Returns 0 on success
+proc mco_destroy*(co: ptr McoCoro): McoResult {.cdecl, importc, header: "minicoro.h".}
+  ## Destroy a coroutine. Must be DEAD or SUSPENDED.
 
-proc mco_yield*(coro: ptr mco_coro): cint {.mcoImport.}
+proc mco_resume*(co: ptr McoCoro): McoResult {.cdecl, importc, header: "minicoro.h".}
+  ## Resume a suspended coroutine.
+
+proc mco_yield*(co: ptr McoCoro): McoResult {.cdecl, importc, header: "minicoro.h".}
   ## Yield from current coroutine.
 
-proc mco_status*(coro: ptr mco_coro): mco_state {.mcoImport.}
-  ## Get current coroutine status.
-
-proc mco_running*(): ptr mco_coro {.mcoImport.}
-  ## Get currently running coroutine, or nil.
-
-proc mco_destroy*(coro: ptr mco_coro) {.mcoImport.}
-  ## Destroy a coroutine.
-
-# =============================================================================
-# Nim-Friendly Wrappers
-# =============================================================================
-
-type
-  MiniCoroutine* = object
-    ## Nim wrapper for minicoro
-    handle: ptr mco_coro
-    state: CoroutineState
-
-proc create*(co: var MiniCoroutine, fn: proc() {.nimcall.}, userData: pointer, stackSize: int) =
-  ## Create a coroutine.
-  ## IMPLEMENTATION:
-  ## 1. Create C-compatible wrapper function
-  ## 2. Set up mco_desc
-  ## 3. Call mco_create()
-  ## 4. Set initial state
-
-  proc wrapper(coro: ptr mco_coro) {.cdecl.} =
-    # Call user's fn with userData
-    # Set state management
-
-  var desc: mco_desc
-  desc.func = wrapper
-  desc.user_data = userData
-  desc.stack_size = stackSize.csize_t
-
-  let res = mco_create(addr co.handle, addr desc)
-  if res != 0:
-    raise newException(CoroutineError, "Failed to create coroutine")
-
-  co.state = csReady
-
-proc resume*(co: var MiniCoroutine) =
-  ## Resume coroutine.
-  ## IMPLEMENTATION:
-  ## 1. Call mco_resume()
-  ## 2. Update state based on mco_status()
-
-  let res = mco_resume(co.handle)
-  if res != 0:
-    raise newException(CoroutineError, "Failed to resume coroutine")
-
-  let status = mco_status(co.handle)
-  co.state = case status
-    of MCO_DEAD: csFinished
-    of MCO_SUSPENDED: csSuspended
-    of MCO_NORMAL: csRunning
-
-proc destroy*(co: var MiniCoroutine) =
-  ## Destroy coroutine.
-  ## IMPLEMENTATION:
-  ## 1. Call mco_destroy()
-  ## 2. Set handle = nil
-
-  if co.handle != nil:
-    mco_destroy(co.handle)
-    co.handle = nil
-  co.state = csFinished
-
-proc state*(co: MiniCoroutine): CoroutineState =
+proc mco_status*(co: ptr McoCoro): McoState {.cdecl, importc, header: "minicoro.h".}
   ## Get coroutine state.
-  co.state
 
-# Global yield function
-proc coroYield*() =
-  ## Yield from current coroutine.
-  ## IMPLEMENTATION:
-  ## 1. Get current coroutine with mco_running()
-  ## 2. Call mco_yield()
+proc mco_get_user_data*(co: ptr McoCoro): pointer {.cdecl, importc, header: "minicoro.h".}
+  ## Get user data set during creation.
 
-  let current = mco_running()
-  if current != nil:
-    discard mco_yield(current)
+proc mco_running*(): ptr McoCoro {.cdecl, importc, header: "minicoro.h".}
+  ## Get the currently running coroutine, or nil.
 
-# Header and library setup
-{.passC: "-Ivendor/minicoro".}
-{.passL: "-Lvendor/minicoro -lminicoro".}
+proc mco_result_description*(res: McoResult): cstring {.cdecl, importc, header: "minicoro.h".}
+  ## Get description string for a result code.
+
+# Storage API for passing data between yield/resume
+proc mco_push*(co: ptr McoCoro, src: pointer, len: csize_t): McoResult {.cdecl, importc, header: "minicoro.h".}
+proc mco_pop*(co: ptr McoCoro, dest: pointer, len: csize_t): McoResult {.cdecl, importc, header: "minicoro.h".}
+proc mco_peek*(co: ptr McoCoro, dest: pointer, len: csize_t): McoResult {.cdecl, importc, header: "minicoro.h".}
+proc mco_get_bytes_stored*(co: ptr McoCoro): csize_t {.cdecl, importc, header: "minicoro.h".}
+
+# =============================================================================
+# Nim Helper Functions
+# =============================================================================
+
+proc isDead*(co: ptr McoCoro): bool {.inline.} =
+  mco_status(co) == MCO_DEAD
+
+proc isSuspended*(co: ptr McoCoro): bool {.inline.} =
+  mco_status(co) == MCO_SUSPENDED
+
+proc isRunning*(co: ptr McoCoro): bool {.inline.} =
+  mco_status(co) == MCO_RUNNING
+
+proc checkResult*(res: McoResult) {.inline.} =
+  ## Raise exception on error
+  if res != MCO_SUCCESS:
+    raise newException(CatchableError, "minicoro error: " & $mco_result_description(res))
+
+template mcoYield*() =
+  ## Yield from current coroutine (convenience)
+  discard mco_yield(mco_running())
