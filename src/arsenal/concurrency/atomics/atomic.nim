@@ -49,9 +49,16 @@ type
 
   Atomic*[T] = object
     ## Atomic wrapper for type T.
-    ## T must be a primitive type (int, uint, ptr, bool, enum) that fits
-    ## in a machine word (up to 8 bytes on 64-bit systems).
     ##
+    ## **LIMITATION**: Currently only works with integer types (int, uint, bool)
+    ## due to GCC __atomic builtins compatibility.
+    ##
+    ## TODO: Add support for:
+    ## - Floating point types (float32, float64) - requires different intrinsics
+    ## - Pointer types (ptr T, ref T) - needs cast handling
+    ## - Enum types - needs underlying type conversion
+    ##
+    ## T must fit in a machine word (up to 8 bytes on 64-bit systems).
     ## For larger types, use locks or split into multiple atomics.
     value: T
 
