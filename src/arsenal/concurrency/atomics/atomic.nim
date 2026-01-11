@@ -73,43 +73,27 @@ proc init*[T](_: typedesc[Atomic[T]], val: T): Atomic[T] {.inline.} =
 
 proc load*[T](a: Atomic[T], order: MemoryOrder = SeqCst): T {.inline.} =
   ## Atomically load the current value.
-  ##
-  ## IMPLEMENTATION:
-  ## Use GCC/Clang `__atomic_load_n` builtin:
-  ## ```nim
-  ## {.emit: """
-  ##   `result` = __atomic_load_n(&`a`.value, `order`);
-  ## """.}
-  ## ```
-  ##
-  ## Or for MSVC on Windows:
-  ## - `InterlockedCompareExchange` with same value for SeqCst
-  ## - `_InterlockedCompareExchange_acq` for Acquire
-  ## - Simple volatile read for Relaxed (on x86)
-  ##
-  ## Note: On x86, loads are naturally Acquire (except for SeqCst which
-  ## needs MFENCE or locked instruction).
-
-  # Stub - use volatile read as placeholder
-  result = a.value
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      `result` = __atomic_load_n(&`a`.value, `order`);
+    """.}
+  else:
+    # Fallback: volatile read (not fully atomic on all platforms)
+    {.emit: """
+      `result` = *((volatile `T`*)&`a`.value);
+    """.}
 
 proc store*[T](a: var Atomic[T], val: T, order: MemoryOrder = SeqCst) {.inline.} =
   ## Atomically store a new value.
-  ##
-  ## IMPLEMENTATION:
-  ## Use GCC/Clang `__atomic_store_n` builtin:
-  ## ```nim
-  ## {.emit: """
-  ##   __atomic_store_n(&`a`.value, `val`, `order`);
-  ## """.}
-  ## ```
-  ##
-  ## On x86:
-  ## - Relaxed/Release: Simple MOV (x86 stores are naturally Release)
-  ## - SeqCst: XCHG or MOV + MFENCE
-
-  # Stub - use volatile write as placeholder
-  a.value = val
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      __atomic_store_n(&`a`->value, `val`, `order`);
+    """.}
+  else:
+    # Fallback: volatile write
+    {.emit: """
+      *((volatile `T`*)&`a`->value) = `val`;
+    """.}
 
 # =============================================================================
 # Exchange
@@ -117,20 +101,14 @@ proc store*[T](a: var Atomic[T], val: T, order: MemoryOrder = SeqCst) {.inline.}
 
 proc exchange*[T](a: var Atomic[T], val: T, order: MemoryOrder = SeqCst): T {.inline.} =
   ## Atomically replace the value and return the old value.
-  ##
-  ## IMPLEMENTATION:
-  ## Use `__atomic_exchange_n`:
-  ## ```nim
-  ## {.emit: """
-  ##   `result` = __atomic_exchange_n(&`a`.value, `val`, `order`);
-  ## """.}
-  ## ```
-  ##
-  ## On x86: XCHG instruction (always has implicit lock prefix).
-  ## On ARM: LDXR/STXR loop or SWPAL (ARMv8.1 LSE).
-
-  result = a.value
-  a.value = val
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      `result` = __atomic_exchange_n(&`a`->value, `val`, `order`);
+    """.}
+  else:
+    # Fallback: not atomic
+    result = a.value
+    a.value = val
 
 # =============================================================================
 # Compare and Exchange (CAS)
@@ -143,30 +121,28 @@ proc compareExchange*[T](a: var Atomic[T], expected: var T, desired: T,
   ## If `a == expected`, sets `a = desired` and returns true.
   ## Otherwise, sets `expected = a` (current value) and returns false.
   ##
-  ## IMPLEMENTATION:
-  ## Use `__atomic_compare_exchange_n`:
-  ## ```nim
-  ## {.emit: """
-  ##   `result` = __atomic_compare_exchange_n(
-  ##     &`a`.value, &`expected`, `desired`,
-  ##     false,  // strong (not weak)
-  ##     `successOrder`, `failureOrder`
-  ##   );
-  ## """.}
-  ## ```
-  ##
   ## On x86: CMPXCHG instruction with LOCK prefix.
   ## On ARM: LDXR/STXR loop or CASAL (ARMv8.1 LSE).
   ##
   ## Note: `expected` is updated to the actual value on failure,
   ## which is useful for CAS loops.
 
-  if a.value == expected:
-    a.value = desired
-    result = true
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      `result` = __atomic_compare_exchange_n(
+        &`a`->value, `expected`, `desired`,
+        0,  // strong (not weak)
+        `successOrder`, `failureOrder`
+      );
+    """.}
   else:
-    expected = a.value
-    result = false
+    # Fallback: non-atomic simulation
+    if a.value == expected:
+      a.value = desired
+      result = true
+    else:
+      expected = a.value
+      result = false
 
 proc compareExchangeWeak*[T](a: var Atomic[T], expected: var T, desired: T,
                              successOrder: MemoryOrder = SeqCst,
@@ -174,23 +150,20 @@ proc compareExchangeWeak*[T](a: var Atomic[T], expected: var T, desired: T,
   ## Weak compare-and-exchange. May fail spuriously even if values match.
   ## Use in loops where you'll retry anyway - can be faster on some platforms.
   ##
-  ## IMPLEMENTATION:
-  ## Same as strong CAS but with `weak=true`:
-  ## ```nim
-  ## {.emit: """
-  ##   `result` = __atomic_compare_exchange_n(
-  ##     &`a`.value, &`expected`, `desired`,
-  ##     true,  // weak
-  ##     `successOrder`, `failureOrder`
-  ##   );
-  ## """.}
-  ## ```
-  ##
   ## On x86: Identical to strong CAS (x86 doesn't have spurious failures).
   ## On ARM: Single LDXR/STXR attempt (no loop), can fail spuriously.
 
-  # Same as strong for stub
-  compareExchange(a, expected, desired, successOrder, failureOrder)
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      `result` = __atomic_compare_exchange_n(
+        &`a`->value, `expected`, `desired`,
+        1,  // weak
+        `successOrder`, `failureOrder`
+      );
+    """.}
+  else:
+    # Fallback: same as strong
+    compareExchange(a, expected, desired, successOrder, failureOrder)
 
 # =============================================================================
 # Fetch and Modify Operations
@@ -200,55 +173,69 @@ proc fetchAdd*[T: SomeInteger](a: var Atomic[T], val: T,
                                 order: MemoryOrder = SeqCst): T {.inline.} =
   ## Atomically add `val` to `a` and return the OLD value.
   ##
-  ## IMPLEMENTATION:
-  ## Use `__atomic_fetch_add`:
-  ## ```nim
-  ## {.emit: """
-  ##   `result` = __atomic_fetch_add(&`a`.value, `val`, `order`);
-  ## """.}
-  ## ```
-  ##
   ## On x86: LOCK XADD instruction.
   ## On ARM: LDADDAL (ARMv8.1) or LDXR/ADD/STXR loop.
 
-  result = a.value
-  a.value = a.value + val
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      `result` = __atomic_fetch_add(&`a`->value, `val`, `order`);
+    """.}
+  else:
+    # Fallback: non-atomic
+    result = a.value
+    a.value = a.value + val
 
 proc fetchSub*[T: SomeInteger](a: var Atomic[T], val: T,
                                 order: MemoryOrder = SeqCst): T {.inline.} =
   ## Atomically subtract `val` from `a` and return the OLD value.
-  ##
-  ## IMPLEMENTATION: Use `__atomic_fetch_sub`.
 
-  result = a.value
-  a.value = a.value - val
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      `result` = __atomic_fetch_sub(&`a`->value, `val`, `order`);
+    """.}
+  else:
+    # Fallback: non-atomic
+    result = a.value
+    a.value = a.value - val
 
 proc fetchAnd*[T: SomeInteger](a: var Atomic[T], val: T,
                                 order: MemoryOrder = SeqCst): T {.inline.} =
   ## Atomically AND `val` with `a` and return the OLD value.
-  ##
-  ## IMPLEMENTATION: Use `__atomic_fetch_and`.
 
-  result = a.value
-  a.value = a.value and val
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      `result` = __atomic_fetch_and(&`a`->value, `val`, `order`);
+    """.}
+  else:
+    # Fallback: non-atomic
+    result = a.value
+    a.value = a.value and val
 
 proc fetchOr*[T: SomeInteger](a: var Atomic[T], val: T,
                                order: MemoryOrder = SeqCst): T {.inline.} =
   ## Atomically OR `val` with `a` and return the OLD value.
-  ##
-  ## IMPLEMENTATION: Use `__atomic_fetch_or`.
 
-  result = a.value
-  a.value = a.value or val
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      `result` = __atomic_fetch_or(&`a`->value, `val`, `order`);
+    """.}
+  else:
+    # Fallback: non-atomic
+    result = a.value
+    a.value = a.value or val
 
 proc fetchXor*[T: SomeInteger](a: var Atomic[T], val: T,
                                 order: MemoryOrder = SeqCst): T {.inline.} =
   ## Atomically XOR `val` with `a` and return the OLD value.
-  ##
-  ## IMPLEMENTATION: Use `__atomic_fetch_xor`.
 
-  result = a.value
-  a.value = a.value xor val
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      `result` = __atomic_fetch_xor(&`a`->value, `val`, `order`);
+    """.}
+  else:
+    # Fallback: non-atomic
+    result = a.value
+    a.value = a.value xor val
 
 # =============================================================================
 # Convenience Operations
@@ -277,14 +264,6 @@ proc dec*[T: SomeInteger](a: var Atomic[T], order: MemoryOrder = Relaxed) {.inli
 proc atomicThreadFence*(order: MemoryOrder) {.inline.} =
   ## Memory fence (barrier) without an atomic operation.
   ##
-  ## IMPLEMENTATION:
-  ## Use `__atomic_thread_fence`:
-  ## ```nim
-  ## {.emit: """
-  ##   __atomic_thread_fence(`order`);
-  ## """.}
-  ## ```
-  ##
   ## On x86:
   ## - Relaxed: No-op (compiler barrier only)
   ## - Acquire/Release: No-op on x86 (implicitly ordered)
@@ -293,16 +272,29 @@ proc atomicThreadFence*(order: MemoryOrder) {.inline.} =
   ## On ARM:
   ## - DMB (Data Memory Barrier) with appropriate options
 
-  discard  # Stub
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      __atomic_thread_fence(`order`);
+    """.}
+  else:
+    # Fallback: compiler barrier only
+    {.emit: """
+      __asm__ __volatile__("" ::: "memory");
+    """.}
 
 proc atomicSignalFence*(order: MemoryOrder) {.inline.} =
   ## Fence for signal handler synchronization (same thread, async signal).
   ## Lighter than thread fence - only prevents compiler reordering.
-  ##
-  ## IMPLEMENTATION:
-  ## Use `__atomic_signal_fence` - typically just a compiler barrier.
 
-  discard  # Stub
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    {.emit: """
+      __atomic_signal_fence(`order`);
+    """.}
+  else:
+    # Fallback: compiler barrier
+    {.emit: """
+      __asm__ __volatile__("" ::: "memory");
+    """.}
 
 # =============================================================================
 # Spin Hint
@@ -312,17 +304,14 @@ proc spinHint*() {.inline.} =
   ## Hint to the CPU that we're in a spin loop.
   ## Reduces power consumption and improves performance on hyperthreaded CPUs.
   ##
-  ## IMPLEMENTATION:
   ## On x86: PAUSE instruction
-  ## ```nim
-  ## {.emit: "__asm__ __volatile__(\"pause\");".}
-  ## ```
-  ##
   ## On ARM: YIELD instruction
-  ## ```nim
-  ## {.emit: "__asm__ __volatile__(\"yield\");".}
-  ## ```
-  ##
   ## On other platforms: No-op or compiler barrier.
 
-  discard  # Stub
+  when defined(amd64) or defined(i386):
+    {.emit: "__asm__ __volatile__(\"pause\");".}
+  elif defined(arm) or defined(arm64):
+    {.emit: "__asm__ __volatile__(\"yield\");".}
+  else:
+    # No-op on other architectures
+    discard
