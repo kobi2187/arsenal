@@ -91,11 +91,20 @@ proc init*[T](_: typedesc[MpmcQueue[T]], capacity: int): MpmcQueue[T] =
   result.mask = (capacity - 1).uint64
   result.enqueuePos = Atomic[uint64].init(0)
   result.dequeuePos = Atomic[uint64].init(0)
-  # TODO: Allocate and initialize buffer
+
+  # Allocate buffer
+  result.buffer = cast[ptr UncheckedArray[Cell[T]]](
+    alloc0(capacity * sizeof(Cell[T]))
+  )
+
+  # Initialize each cell's sequence to its index
+  for i in 0..<capacity:
+    result.buffer[i].sequence = Atomic[uint64].init(i.uint64)
 
 proc `=destroy`*[T](q: MpmcQueue[T]) =
   ## Free the queue's buffer.
-  discard  # TODO: Free buffer
+  if q.buffer != nil:
+    dealloc(q.buffer)
 
 # =============================================================================
 # Push (Enqueue) - Multiple Producers
@@ -133,8 +142,24 @@ proc push*[T](q: var MpmcQueue[T], value: sink T): bool =
   ## - seq > pos + 1: cell was reused, we're too slow
   ## - seq < pos: queue full, consumers behind
 
-  # Stub implementation
-  return false
+  while true:
+    let pos = q.enqueuePos.load(Relaxed)
+    let cell = addr q.buffer[pos and q.mask]
+    let seq = cell.sequence.load(Acquire)
+    let diff = seq.int64 - pos.int64
+
+    if diff == 0:
+      # Cell is empty and ready for this position
+      var expectedPos = pos
+      if q.enqueuePos.compareExchangeWeak(expectedPos, pos + 1, Relaxed, Relaxed):
+        # We claimed this slot
+        cell.data = value
+        cell.sequence.store(pos + 1, Release)  # Mark as "has data"
+        return true
+    elif diff < 0:
+      # Queue is full (consumer hasn't caught up)
+      return false
+    # else: diff > 0, another producer took this slot, retry
 
 proc tryPush*[T](q: var MpmcQueue[T], value: sink T): bool {.inline.} =
   ## Same as push - always non-blocking.
@@ -174,8 +199,24 @@ proc pop*[T](q: var MpmcQueue[T]): Option[T] =
   ## "this cell is empty and ready for write at position pos + capacity"
   ## (i.e., the next lap around the ring buffer)
 
-  # Stub implementation
-  return none(T)
+  while true:
+    let pos = q.dequeuePos.load(Relaxed)
+    let cell = addr q.buffer[pos and q.mask]
+    let seq = cell.sequence.load(Acquire)
+    let diff = seq.int64 - (pos + 1).int64
+
+    if diff == 0:
+      # Cell has data for this position
+      var expectedPos = pos
+      if q.dequeuePos.compareExchangeWeak(expectedPos, pos + 1, Relaxed, Relaxed):
+        # We claimed this slot
+        let value = cell.data
+        cell.sequence.store(pos + q.capacity, Release)  # Mark as "empty for future"
+        return some(value)
+    elif diff < 0:
+      # Queue is empty (producer hasn't produced yet)
+      return none(T)
+    # else: diff > 0, another consumer took this slot, retry
 
 proc tryPop*[T](q: var MpmcQueue[T]): Option[T] {.inline.} =
   ## Same as pop - always non-blocking.

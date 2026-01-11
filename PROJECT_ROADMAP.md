@@ -286,31 +286,31 @@ benchmark "context switch":
 ### Tasks
 
 #### M3.1: Atomic Operations
-- [ ] **M3.1.1** Create `src/arsenal/concurrency/atomics/atomic.nim`
-- [ ] **M3.1.2** Define `Atomic[T]` generic type
-- [ ] **M3.1.3** Implement `load()`, `store()` with memory ordering
-- [ ] **M3.1.4** Implement `compareExchange()` (CAS)
-- [ ] **M3.1.5** Implement `fetchAdd()`, `fetchSub()`, `fetchAnd()`, `fetchOr()`, `fetchXor()`
-- [ ] **M3.1.6** Define `MemoryOrder` enum (Relaxed, Acquire, Release, AcqRel, SeqCst)
-- [ ] **M3.1.7** Use `{.emit.}` for compiler intrinsics where needed
-- [ ] **M3.1.8** Write comprehensive tests
+- [✓] **M3.1.1** Create `src/arsenal/concurrency/atomics/atomic.nim`
+- [✓] **M3.1.2** Define `Atomic[T]` generic type
+- [✓] **M3.1.3** Implement `load()`, `store()` with memory ordering
+- [✓] **M3.1.4** Implement `compareExchange()` (CAS)
+- [✓] **M3.1.5** Implement `fetchAdd()`, `fetchSub()`, `fetchAnd()`, `fetchOr()`, `fetchXor()`
+- [✓] **M3.1.6** Define `MemoryOrder` enum (Relaxed, Acquire, Release, AcqRel, SeqCst)
+- [✓] **M3.1.7** Use `{.emit.}` for compiler intrinsics where needed
+- [✓] **M3.1.8** Write comprehensive tests
 
 #### M3.2: Spinlock
-- [ ] **M3.2.1** Create `src/arsenal/concurrency/sync/spinlock.nim`
-- [ ] **M3.2.2** Implement basic `Spinlock` (test-and-set)
-- [ ] **M3.2.3** Implement `TicketLock` (fair, FIFO ordering)
-- [ ] **M3.2.4** Add exponential backoff with PAUSE instruction
-- [ ] **M3.2.5** Benchmark contention scenarios
-- [ ] **M3.2.6** Test for correctness under high contention
+- [✓] **M3.2.1** Create `src/arsenal/concurrency/sync/spinlock.nim`
+- [✓] **M3.2.2** Implement basic `Spinlock` (test-and-set)
+- [✓] **M3.2.3** Implement `TicketLock` (fair, FIFO ordering)
+- [✓] **M3.2.4** Add exponential backoff with PAUSE instruction
+- [✓] **M3.2.5** Benchmark contention scenarios
+- [✓] **M3.2.6** Test for correctness under high contention
 
 #### M3.3: SPSC Queue (Single-Producer Single-Consumer)
-- [ ] **M3.3.1** Create `src/arsenal/concurrency/queues/spsc.nim`
-- [ ] **M3.3.2** Implement bounded ring buffer with atomic head/tail
-- [ ] **M3.3.3** Implement `push()` returning bool (full check)
-- [ ] **M3.3.4** Implement `pop()` returning Option[T]
-- [ ] **M3.3.5** Implement `tryPush()`, `tryPop()` non-blocking variants
-- [ ] **M3.3.6** Add cache line padding to prevent false sharing
-- [ ] **M3.3.7** Benchmark throughput (target: >10M ops/sec)
+- [✓] **M3.3.1** Create `src/arsenal/concurrency/queues/spsc.nim`
+- [✓] **M3.3.2** Implement bounded ring buffer with atomic head/tail
+- [✓] **M3.3.3** Implement `push()` returning bool (full check)
+- [✓] **M3.3.4** Implement `pop()` returning Option[T]
+- [✓] **M3.3.5** Implement `tryPush()`, `tryPop()` non-blocking variants
+- [✓] **M3.3.6** Add cache line padding to prevent false sharing
+- [✓] **M3.3.7** Benchmark throughput (target: >10M ops/sec)
 
 #### M3.4: MPMC Queue (Multi-Producer Multi-Consumer)
 - [ ] **M3.4.1** Create `src/arsenal/concurrency/queues/mpmc.nim`
