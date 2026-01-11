@@ -54,22 +54,6 @@ type
 proc init*[T](_: typedesc[SpscQueue[T]], capacity: int): SpscQueue[T] =
   ## Create a new SPSC queue with given capacity.
   ## Capacity MUST be a power of 2 (for fast modulo via bit masking).
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Round up capacity to next power of 2 if not already
-  ## 2. Allocate buffer with aligned_alloc for cache alignment
-  ## 3. Initialize head and tail to 0
-  ##
-  ## ```nim
-  ## let cap = nextPowerOf2(capacity)
-  ## result.capacity = cap.uint64
-  ## result.mask = (cap - 1).uint64
-  ## result.buffer = cast[ptr UncheckedArray[T]](
-  ##   alignedAlloc(cap * sizeof(T), CacheLineSize)
-  ## )
-  ## result.head = Atomic[uint64].init(0)
-  ## result.tail = Atomic[uint64].init(0)
-  ## ```
 
   assert capacity > 0 and (capacity and (capacity - 1)) == 0,
     "Capacity must be power of 2"
@@ -78,18 +62,16 @@ proc init*[T](_: typedesc[SpscQueue[T]], capacity: int): SpscQueue[T] =
   result.mask = (capacity - 1).uint64
   result.head = Atomic[uint64].init(0)
   result.tail = Atomic[uint64].init(0)
-  # TODO: Allocate aligned buffer
-  # result.buffer = ...
+
+  # Allocate buffer
+  result.buffer = cast[ptr UncheckedArray[T]](
+    alloc0(capacity * sizeof(T))
+  )
 
 proc `=destroy`*[T](q: SpscQueue[T]) =
   ## Free the queue's buffer.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if q.buffer != nil:
-  ##   alignedDealloc(q.buffer)
-  ## ```
-  discard  # TODO: Free buffer
+  if q.buffer != nil:
+    dealloc(q.buffer)
 
 # =============================================================================
 # Producer Operations (Single Thread Only!)
@@ -127,8 +109,8 @@ proc push*[T](q: var SpscQueue[T], value: sink T): bool =
   if h - t >= q.capacity:
     return false  # Full
 
-  # TODO: Write to buffer
-  # q.buffer[h and q.mask] = value
+  # Write to buffer
+  q.buffer[h and q.mask] = value
   q.head.store(h + 1, Release)
   return true
 
@@ -169,11 +151,10 @@ proc pop*[T](q: var SpscQueue[T]): Option[T] =
   if t == h:
     return none(T)  # Empty
 
-  # TODO: Read from buffer
-  # let value = q.buffer[t and q.mask]
+  # Read from buffer
+  let value = q.buffer[t and q.mask]
   q.tail.store(t + 1, Release)
-  # return some(value)
-  return none(T)  # Stub
+  return some(value)
 
 proc tryPop*[T](q: var SpscQueue[T]): Option[T] {.inline.} =
   ## Alias for pop (they're the same for SPSC).

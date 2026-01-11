@@ -13,6 +13,8 @@
 ##   useScalarImplementation()
 ## ```
 
+import std/[os, osproc]
+
 type
   CpuVendor* = enum
     cvUnknown = "Unknown"
@@ -152,8 +154,6 @@ proc detectCpuFeatures*(): CpuFeatures =
 
 proc getPlatformInfo*(): PlatformInfo =
   ## Returns static platform information.
-  import std/os
-
   result = PlatformInfo(
     os: hostOS,
     arch: hostCPU,
