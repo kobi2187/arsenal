@@ -198,40 +198,40 @@ test "thread-local strategy":
 ### Tasks
 
 #### M2.1: libaco Binding (x86_64, ARM64)
-- [ ] **M2.1.1** Download libaco source to `vendor/libaco/`
-- [ ] **M2.1.2** Create `src/arsenal/concurrency/coroutines/libaco.nim`
-- [ ] **M2.1.3** Define `AcoT`, `AcoShareStack`, `AcoAttr` types
-- [ ] **M2.1.4** Bind `aco_thread_init()`, `aco_create()`, `aco_resume()`, `aco_yield()`, `aco_destroy()`
-- [ ] **M2.1.5** Add `{.compile.}` pragmas for `aco.c` and `acosw.S`
-- [ ] **M2.1.6** Test basic context switch works
+- [✓] **M2.1.1** Download libaco source to `vendor/libaco/`
+- [✓] **M2.1.2** Create `src/arsenal/concurrency/coroutines/libaco.nim`
+- [✓] **M2.1.3** Define `AcoT`, `AcoShareStack`, `AcoAttr` types
+- [✓] **M2.1.4** Bind `aco_thread_init()`, `aco_create()`, `aco_resume()`, `aco_yield()`, `aco_destroy()`
+- [✓] **M2.1.5** Add `{.compile.}` pragmas for `aco.c` and `acosw.S`
+- [✓] **M2.1.6** Test basic context switch works
 - [ ] **M2.1.7** Benchmark context switch time (target: <20ns)
 
 #### M2.2: minicoro Binding (Portable Fallback)
-- [ ] **M2.2.1** Download minicoro source to `vendor/minicoro/`
-- [ ] **M2.2.2** Create `src/arsenal/concurrency/coroutines/minicoro.nim`
-- [ ] **M2.2.3** Bind `mco_coro`, `mco_create()`, `mco_resume()`, `mco_yield()`, `mco_destroy()`
+- [✓] **M2.2.1** Download minicoro source to `vendor/minicoro/`
+- [✓] **M2.2.2** Create `src/arsenal/concurrency/coroutines/minicoro.nim`
+- [✓] **M2.2.3** Bind `mco_coro`, `mco_create()`, `mco_resume()`, `mco_yield()`, `mco_destroy()`
 - [ ] **M2.2.4** Test on Windows
 - [ ] **M2.2.5** Benchmark context switch time
 
 #### M2.3: Unified Coroutine Interface
-- [ ] **M2.3.1** Create `src/arsenal/concurrency/coroutine.nim` (trait definition)
-- [ ] **M2.3.2** Define `CoroutineBackend` concept
-- [ ] **M2.3.3** Create `Coroutine` ref object wrapper
-- [ ] **M2.3.4** Create `src/arsenal/concurrency/coroutines/backend.nim` (auto-selection)
-- [ ] **M2.3.5** Implement platform dispatch:
+- [✓] **M2.3.1** Create `src/arsenal/concurrency/coroutine.nim` (trait definition)
+- [✓] **M2.3.2** Define `CoroutineBackend` concept
+- [✓] **M2.3.3** Create `Coroutine` ref object wrapper
+- [✓] **M2.3.4** Create `src/arsenal/concurrency/coroutines/backend.nim` (auto-selection)
+- [✓] **M2.3.5** Implement platform dispatch:
   - Linux/macOS x86_64 → libaco
   - Linux ARM64 → libaco
   - macOS ARM64 → libaco
   - Windows → minicoro
-- [ ] **M2.3.6** Create `newCoroutine(fn: proc())` factory
-- [ ] **M2.3.7** Create `resume()`, `yield()`, `destroy()` procs
+- [✓] **M2.3.6** Create `newCoroutine(fn: proc())` factory
+- [✓] **M2.3.7** Create `resume()`, `yield()`, `destroy()` procs
 
 #### M2.4: Nim-Friendly Wrapper
-- [ ] **M2.4.1** Create RAII `Coroutine` type with destructor
+- [✓] **M2.4.1** Create RAII `Coroutine` type with destructor
 - [ ] **M2.4.2** Handle GC safety (mark coroutine stacks as roots if needed)
 - [ ] **M2.4.3** Create `spawn(fn: proc())` that creates and immediately resumes
-- [ ] **M2.4.4** Track current coroutine with threadvar `currentCoro`
-- [ ] **M2.4.5** Implement `running()` to check if inside coroutine
+- [✓] **M2.4.4** Track current coroutine with threadvar `currentCoro`
+- [✓] **M2.4.5** Implement `running()` to check if inside coroutine
 
 ### Acceptance Criteria
 - [ ] Context switch benchmark: <20ns on x86_64, <50ns on ARM64
