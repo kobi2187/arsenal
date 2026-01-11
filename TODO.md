@@ -156,7 +156,7 @@ When you find a limitation or cut corners in implementation, add it here!
    - Potential solution approach
 
 2. **When you cut corners**: Document it! Examples:
-   - "Changed test instead of fixing implementation"
+   - "Changed test instead of fixing implementation" (yeah, but actually don't modify tests just to make them pass)
    - "Used naive algorithm, optimize later"
    - "Hardcoded value, should be configurable"
 

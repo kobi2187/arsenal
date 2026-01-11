@@ -28,6 +28,7 @@
 ## ```
 
 import std/options
+import ./backend
 
 type
   CoroutineState* = enum
@@ -44,80 +45,91 @@ type
     ## The type of procedure a coroutine executes.
     ## Must be a closure (captures environment) and GC-safe.
 
-  CoroutineBackend* = concept c
-    ## Concept for coroutine backend implementations.
-    ## Different backends (libaco, minicoro, etc.) must satisfy this interface.
-
-    c.create(fn: CoroutineProc, stackSize: int): c
-    c.resume()
-    c.destroy()
-    c.state(): CoroutineState
-
-  Coroutine* = ref object
-    ## High-level coroutine wrapper providing a safe interface.
-    ## Automatically manages the underlying backend.
+  CoroutineObj = object
+    ## Internal coroutine object
     state*: CoroutineState
     entryPoint: CoroutineProc
-    # Backend-specific handle stored here
-    # When implementing:
-    # - For libaco: aco_t pointer
-    # - For minicoro: mco_coro pointer
+    backend: UnifiedBackend
 
-const
-  DefaultStackSize* = 64 * 1024  ## 64KB default stack
-  MinStackSize* = 2 * 1024       ## 2KB minimum
-  MaxStackSize* = 8 * 1024 * 1024  ## 8MB maximum
+proc `=destroy`*(c: var CoroutineObj) =
+  ## Destructor - clean up backend resources.
+  if c.backend.handle != nil:
+    backend.destroy(c.backend)
+
+type
+  Coroutine* = ref CoroutineObj
+    ## High-level coroutine wrapper providing a safe interface.
+    ## Automatically manages the underlying backend.
+  
+# =============================================================================
+# Current Coroutine (Thread Local)
+# =============================================================================
+
+var currentCoroutine {.threadvar.}: Coroutine
+  ## The currently running coroutine in this thread, or nil if in main context.
+
+proc running*(): Coroutine =
+  ## Get the currently running coroutine, or nil if not in a coroutine.
+  currentCoroutine
+
+proc inCoroutine*(): bool =
+  ## Check if currently executing within a coroutine.
+  currentCoroutine != nil
+
+# =============================================================================
+# Trampoline (C -> Nim bridge)
+# =============================================================================
+
+when backend.SelectedBackend == backend.cbLibaco:
+  proc trampoline() {.cdecl.} =
+    ## Trampoline for libaco (no args, get arg from context)
+    let co = backend.aco_get_co()
+    let arg = backend.getArg(co)
+    let coro = cast[Coroutine](arg)
+    
+    try:
+      coro.entryPoint()
+    except CatchableError as e:
+      stderr.writeLine("Error in coroutine: " & e.msg)
+    finally:
+      coro.state = csFinished
+      backend.exitBackend()
+
+else:
+  proc trampoline(co: ptr backend.McoCoro) {.cdecl.} =
+    ## Trampoline for minicoro (takes coroutine pointer)
+    let arg = backend.mco_get_user_data(co)
+    let coro = cast[Coroutine](arg)
+    
+    try:
+      coro.entryPoint()
+    except CatchableError as e:
+      stderr.writeLine("Error in coroutine: " & e.msg)
+    finally:
+      coro.state = csFinished
+      # minicoro just returns
 
 # =============================================================================
 # Coroutine Creation
 # =============================================================================
 
-proc newCoroutine*(fn: CoroutineProc, stackSize: int = DefaultStackSize): Coroutine =
+proc newCoroutine*(fn: CoroutineProc, stackSize: int = backend.DefaultStackSize): Coroutine =
   ## Create a new coroutine with the given entry point.
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Allocate Coroutine object
-  ## 2. Call backend-specific creation:
-  ##
-  ## For libaco:
-  ## ```nim
-  ## # First, ensure thread is initialized (once per thread)
-  ## if not acoThreadInitialized:
-  ##   aco_thread_init(nil)
-  ##   mainCo = aco_create(nil, nil, 0, nil, nil)  # main context
-  ##   acoThreadInitialized = true
-  ##
-  ## # Create shared stack (can be reused across coroutines)
-  ## let stack = aco_share_stack_new(stackSize)
-  ##
-  ## # Create coroutine
-  ## # The wrapper function captures `fn` and calls it
-  ## result.handle = aco_create(mainCo, stack, 0, wrapperFn, result)
-  ## ```
-  ##
-  ## For minicoro:
-  ## ```nim
-  ## var desc: mco_desc
-  ## desc.func = wrapperFn
-  ## desc.user_data = cast[pointer](result)
-  ## desc.stack_size = stackSize
-  ## mco_create(addr result.handle, addr desc)
-  ## ```
-  ##
-  ## The wrapper function should:
-  ## 1. Set state to csRunning
-  ## 2. Call the user's `fn`
-  ## 3. Set state to csFinished when done
-
-  result = Coroutine(
-    state: csReady,
-    entryPoint: fn
+  
+  new(result)
+  result.state = csReady
+  result.entryPoint = fn
+  
+  # Create backend with trampoline
+  # We pass `result` (the Coroutine object) as user data
+  result.backend = backend.createBackend(
+    cast[pointer](trampoline), 
+    stackSize, 
+    cast[pointer](result)
   )
-  # TODO: Initialize backend
 
-proc newCoroutine*(fn: proc() {.nimcall.}, stackSize: int = DefaultStackSize): Coroutine =
+proc newCoroutine*(fn: proc() {.nimcall, gcsafe.}, stackSize: int = backend.DefaultStackSize): Coroutine =
   ## Overload for non-closure procedures.
-  ## Wraps in a closure for compatibility.
   let closureFn: CoroutineProc = proc() = fn()
   newCoroutine(closureFn, stackSize)
 
@@ -127,121 +139,67 @@ proc newCoroutine*(fn: proc() {.nimcall.}, stackSize: int = DefaultStackSize): C
 
 proc resume*(c: Coroutine) =
   ## Resume execution of a suspended coroutine.
-  ## Returns when the coroutine yields or finishes.
-  ##
-  ## IMPLEMENTATION:
-  ## For libaco:
-  ## ```nim
-  ## assert c.state in {csReady, csSuspended}
-  ## c.state = csRunning
-  ## aco_resume(c.handle)
-  ## # When we return here, coroutine yielded or finished
-  ## ```
-  ##
-  ## For minicoro:
-  ## ```nim
-  ## mco_resume(c.handle)
-  ## c.state = if mco_status(c.handle) == MCO_DEAD:
-  ##   csFinished
-  ## else:
-  ##   csSuspended
-  ## ```
-
+  
   if c.state == csFinished:
     raise newException(CoroutineError, "Cannot resume finished coroutine")
   if c.state == csRunning:
     raise newException(CoroutineError, "Coroutine is already running")
 
+  # Update state
   c.state = csRunning
-  # TODO: Backend-specific resume
-  c.state = csSuspended  # or csFinished
+  
+  # Set current coroutine threadvar
+  let prevCoro = currentCoroutine
+  currentCoroutine = c
+  
+  try:
+    # Resume backend
+    backend.resume(c.backend)
+  finally:
+    # Restore previous coroutine
+    currentCoroutine = prevCoro
+    
+    # Update state after return
+    if backend.isFinished(c.backend):
+      c.state = csFinished
+    else:
+      c.state = csSuspended
 
-proc isFinished*(c: Coroutine): bool {.inline.} =
-  ## Check if coroutine has completed execution.
-  c.state == csFinished
-
-proc isRunning*(c: Coroutine): bool {.inline.} =
-  ## Check if coroutine is currently executing.
-  c.state == csRunning
-
-proc isSuspended*(c: Coroutine): bool {.inline.} =
-  ## Check if coroutine is suspended and can be resumed.
-  c.state == csSuspended
+proc isFinished*(c: Coroutine): bool {.inline.} = c.state == csFinished
+proc isRunning*(c: Coroutine): bool {.inline.} = c.state == csRunning
+proc isSuspended*(c: Coroutine): bool {.inline.} = c.state == csSuspended
 
 # =============================================================================
-# Yield (Called from within a coroutine)
+# Yield
 # =============================================================================
 
 proc coroYield*() =
   ## Yield execution back to the caller of `resume()`.
-  ## Can only be called from within a running coroutine.
-  ##
-  ## IMPLEMENTATION:
-  ## For libaco:
-  ## ```nim
-  ## aco_yield()
-  ## ```
-  ##
-  ## For minicoro:
-  ## ```nim
-  ## mco_yield(mco_running())
-  ## ```
-  ##
-  ## This switches context back to whoever called resume().
-  ## When resume() is called again, execution continues after this yield.
-
-  # TODO: Backend-specific yield
-  discard
+  
+  let c = currentCoroutine
+  if c == nil:
+    raise newException(CoroutineError, "Cannot yield outside a coroutine")
+  
+  c.state = csSuspended
+  backend.yieldBackend()
+  c.state = csRunning
 
 # =============================================================================
 # Current Coroutine
 # =============================================================================
 
-var currentCoroutine {.threadvar.}: Coroutine
-  ## The currently running coroutine in this thread, or nil if in main context.
+# Moved to top of file
 
-proc running*(): Coroutine =
-  ## Get the currently running coroutine, or nil if not in a coroutine.
-  ##
-  ## IMPLEMENTATION:
-  ## For libaco: `aco_get_co()` returns current, compare to mainCo
-  ## For minicoro: `mco_running()` returns current or nil
-  currentCoroutine
-
-proc inCoroutine*(): bool {.inline.} =
-  ## Check if currently executing within a coroutine.
-  running() != nil
 
 # =============================================================================
 # Cleanup
 # =============================================================================
 
 proc destroy*(c: Coroutine) =
-  ## Explicitly destroy a coroutine and free its resources.
-  ## Usually not needed - GC finalizer handles this.
-  ##
-  ## IMPLEMENTATION:
-  ## For libaco:
-  ## ```nim
-  ## if c.handle != nil:
-  ##   aco_destroy(c.handle)
-  ##   c.handle = nil
-  ## ```
-  ##
-  ## For minicoro:
-  ## ```nim
-  ## mco_destroy(c.handle)
-  ## ```
-
+  ## Explicitly destroy a coroutine.
+  if c.backend.handle != nil:
+    backend.destroy(c.backend)
   c.state = csFinished
-  # TODO: Backend-specific cleanup
 
-# =============================================================================
-# Finalizer
-# =============================================================================
 
-proc `=destroy`*(c: Coroutine) =
-  ## Destructor - clean up backend resources.
-  if c != nil and c.state != csFinished:
-    # TODO: Backend cleanup
-    discard
+

@@ -139,13 +139,14 @@ proc aco_is_main_co*(co: ptr AcoHandle): bool {.cdecl, importc, header: "aco.h".
 # Nim Helper Functions
 # =============================================================================
 
-proc aco_exit*() {.inline.} =
+proc aco_exit*() =
   ## Exit the current coroutine (mark as finished and yield).
   ## Call this at the end of your coroutine function.
   let co = aco_get_co()
   co[].is_end = 1.char
-  co[].share_stack.owner = nil
-  co[].share_stack.align_validsz = 0
+  if co[].share_stack != nil:
+    co[].share_stack.owner = nil
+    co[].share_stack.align_validsz = 0
   aco_yield1(co)
 
 proc isEnded*(co: ptr AcoHandle): bool {.inline.} =

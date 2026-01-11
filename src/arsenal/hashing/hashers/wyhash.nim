@@ -7,6 +7,9 @@
 ## Performance: ~18 GB/s on modern hardware (fastest pure hash function)
 ## Quality: Excellent statistical properties
 
+import ./xxhash64
+export HashSeed, DefaultSeed
+
 type
   WyHash* = object
     ## wyhash hasher type.
@@ -105,14 +108,31 @@ proc wymum*(a, b: uint64): uint64 {.inline.} =
   ## wyhash's multiply-mix operation.
   ## Combines multiplication with mixing for better diffusion.
   ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## let r = a * b
-  ## result = r xor (r shr 32)
-  ## ```
+  ## Performs 128-bit multiply and mixes high/low 64 bits.
 
-  # Stub
-  result = a * b
+  # Full 128-bit multiply then mix
+  var ha, hb, la, lb: uint64
+
+  # Split into high and low 32 bits
+  ha = a shr 32
+  la = a and 0xFFFFFFFF'u64
+  hb = b shr 32
+  lb = b and 0xFFFFFFFF'u64
+
+  # 128-bit multiplication
+  let rh = ha * hb
+  let rm0 = ha * lb
+  let rm1 = hb * la
+  let rl = la * lb
+
+  # Combine
+  let t = rl + (rm0 shl 32)
+  let c = if t < rl: 1'u64 else: 0'u64
+
+  let lo = t + (rm1 shl 32)
+  let hi = rh + (rm0 shr 32) + (rm1 shr 32) + c + (if lo < t: 1'u64 else: 0'u64)
+
+  result = hi xor lo
 
 proc wyread*(p: ptr UncheckedArray[byte], i: int): uint64 {.inline.} =
   ## Read uint64 from byte array at index i*8.
