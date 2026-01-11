@@ -8,6 +8,13 @@
 ## Quality: Excellent avalanche effect and collision resistance
 
 type
+  HashSeed* = distinct uint64
+    ## Seed for hash functions
+
+const
+  DefaultSeed* = HashSeed(0)
+
+type
   XxHash64* = object
     ## xxHash64 hasher type.
 
@@ -27,28 +34,107 @@ const
   XXH_PRIME64_5 = 0x27D4EB2F165667C5'u64
 
 # =============================================================================
+# Utility Functions
+# =============================================================================
+
+proc avalanche64(h: uint64): uint64 {.inline.} =
+  ## Final avalanche mixing for 64-bit hash.
+  ## Ensures every input bit affects every output bit.
+  result = h
+  result = result xor (result shr 33)
+  result *= XXH_PRIME64_2
+  result = result xor (result shr 29)
+  result *= XXH_PRIME64_3
+  result = result xor (result shr 32)
+
+proc round64(acc: uint64, input: uint64): uint64 {.inline.} =
+  ## One round of xxHash64 processing.
+  result = acc + input * XXH_PRIME64_2
+  # Rotate left by 31 bits
+  result = (result shl 31) or (result shr (64 - 31))
+  result *= XXH_PRIME64_1
+
+# =============================================================================
 # One-shot Hashing
 # =============================================================================
 
 proc hash*(hasher: typedesc[XxHash64], data: openArray[byte], seed: HashSeed = DefaultSeed): uint64 =
   ## Compute xxHash64 hash of data in one pass.
-  ##
-  ## IMPLEMENTATION:
-  ## xxHash64 algorithm:
-  ## 1. Initialize state with seed and primes
-  ## 2. Process data in 32-byte chunks using 4 parallel accumulators
-  ## 3. Handle remaining bytes
-  ## 4. Mix accumulators into final hash
-  ##
-  ## Key optimizations:
-  ## - Unrolled loops for better ILP
-  ## - SIMD-friendly operations
-  ## - No branches in inner loop
+  ## Implements the xxHash64 algorithm with 4 parallel accumulators.
 
-  # Stub implementation - return a simple hash
-  result = uint64(data.len)
-  for b in data:
-    result = (result * 31) + uint64(b)
+  let s = uint64(seed)
+  let len = data.len
+
+  if len >= 32:
+    # Initialize accumulators
+    var v1 = s + XXH_PRIME64_1 + XXH_PRIME64_2
+    var v2 = s + XXH_PRIME64_2
+    var v3 = s
+    var v4 = s - XXH_PRIME64_1
+
+    # Process 32-byte chunks
+    var p = 0
+    while p + 32 <= len:
+      # Read 4 x uint64 and process
+      let input1 = cast[ptr uint64](unsafeAddr data[p])[]
+      let input2 = cast[ptr uint64](unsafeAddr data[p + 8])[]
+      let input3 = cast[ptr uint64](unsafeAddr data[p + 16])[]
+      let input4 = cast[ptr uint64](unsafeAddr data[p + 24])[]
+
+      v1 = round64(v1, input1)
+      v2 = round64(v2, input2)
+      v3 = round64(v3, input3)
+      v4 = round64(v4, input4)
+
+      p += 32
+
+    # Merge accumulators
+    result = ((v1 shl 1) or (v1 shr 63)) +
+             ((v2 shl 7) or (v2 shr 57)) +
+             ((v3 shl 12) or (v3 shr 52)) +
+             ((v4 shl 18) or (v4 shr 46))
+
+    # Process remaining data
+    while p + 8 <= len:
+      let k1 = cast[ptr uint64](unsafeAddr data[p])[]
+      result = result xor round64(0, k1)
+      result = ((result shl 27) or (result shr 37)) * XXH_PRIME64_1 + XXH_PRIME64_4
+      p += 8
+
+    if p + 4 <= len:
+      let k1 = cast[ptr uint32](unsafeAddr data[p])[].uint64
+      result = result xor (k1 * XXH_PRIME64_1)
+      result = ((result shl 23) or (result shr 41)) * XXH_PRIME64_2 + XXH_PRIME64_3
+      p += 4
+
+    while p < len:
+      result = result xor (data[p].uint64 * XXH_PRIME64_5)
+      result = ((result shl 11) or (result shr 53)) * XXH_PRIME64_1
+      p += 1
+  else:
+    # Short input
+    result = s + XXH_PRIME64_5
+    var p = 0
+    while p + 8 <= len:
+      let k1 = cast[ptr uint64](unsafeAddr data[p])[]
+      result = result xor round64(0, k1)
+      result = ((result shl 27) or (result shr 37)) * XXH_PRIME64_1 + XXH_PRIME64_4
+      p += 8
+
+    if p + 4 <= len:
+      let k1 = cast[ptr uint32](unsafeAddr data[p])[].uint64
+      result = result xor (k1 * XXH_PRIME64_1)
+      result = ((result shl 23) or (result shr 41)) * XXH_PRIME64_2 + XXH_PRIME64_3
+      p += 4
+
+    while p < len:
+      result = result xor (data[p].uint64 * XXH_PRIME64_5)
+      result = ((result shl 11) or (result shr 53)) * XXH_PRIME64_1
+      p += 1
+
+  # Add length and final avalanche
+  result = result + len.uint64
+  result = avalanche64(result)
 
 proc hash*(hasher: typedesc[XxHash64], s: string, seed: HashSeed = DefaultSeed): uint64 {.inline.} =
   ## Hash a string.
@@ -60,22 +146,13 @@ proc hash*(hasher: typedesc[XxHash64], s: string, seed: HashSeed = DefaultSeed):
 
 proc init*(hasher: typedesc[XxHash64], seed: HashSeed = DefaultSeed): XxHash64State =
   ## Initialize incremental hasher with seed.
-  ##
-  ## IMPLEMENTATION:
-  ## Initialize the four 64-bit accumulators:
-  ## ```nim
-  ## let s = uint64(seed)
-  ## result.state[0] = s + XXH_PRIME64_1 + XXH_PRIME64_2
-  ## result.state[1] = s + XXH_PRIME64_2
-  ## result.state[2] = s
-  ## result.state[3] = s - XXH_PRIME64_1
-  ## result.seed = s
-  ## result.bufferSize = 0
-  ## result.totalLen = 0
-  ## ```
-
-  # Stub implementation
-  result.seed = uint64(seed)
+  ## Initialize the four 64-bit accumulators.
+  let s = uint64(seed)
+  result.state[0] = s + XXH_PRIME64_1 + XXH_PRIME64_2
+  result.state[1] = s + XXH_PRIME64_2
+  result.state[2] = s
+  result.state[3] = s - XXH_PRIME64_1
+  result.seed = s
   result.bufferSize = 0
   result.totalLen = 0
 
@@ -96,15 +173,42 @@ proc update*(state: var XxHash64State, s: string) {.inline.} =
 
 proc finish*(state: var XxHash64State): uint64 =
   ## Complete the hash computation and return the result.
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Process remaining buffer
-  ## 2. Mix the four accumulators
-  ## 3. Incorporate total length
-  ## 4. Final avalanche mixing
+  ## Processes any remaining buffered data and mixes accumulators.
 
-  # Stub implementation
-  result = state.totalLen
+  if state.totalLen >= 32:
+    # Merge the four accumulators
+    result = ((state.state[0] shl 1) or (state.state[0] shr 63)) +
+             ((state.state[1] shl 7) or (state.state[1] shr 57)) +
+             ((state.state[2] shl 12) or (state.state[2] shr 52)) +
+             ((state.state[3] shl 18) or (state.state[3] shr 46))
+  else:
+    # Short input - use seed + PRIME5
+    result = state.seed + XXH_PRIME64_5
+
+  # Add total length
+  result += state.totalLen
+
+  # Process remaining buffered bytes
+  var p = 0
+  while p + 8 <= state.bufferSize:
+    let k1 = cast[ptr uint64](unsafeAddr state.buffer[p])[]
+    result = result xor round64(0, k1)
+    result = ((result shl 27) or (result shr 37)) * XXH_PRIME64_1 + XXH_PRIME64_4
+    p += 8
+
+  if p + 4 <= state.bufferSize:
+    let k1 = cast[ptr uint32](unsafeAddr state.buffer[p])[].uint64
+    result = result xor (k1 * XXH_PRIME64_1)
+    result = ((result shl 23) or (result shr 41)) * XXH_PRIME64_2 + XXH_PRIME64_3
+    p += 4
+
+  while p < state.bufferSize:
+    result = result xor (state.buffer[p].uint64 * XXH_PRIME64_5)
+    result = ((result shl 11) or (result shr 53)) * XXH_PRIME64_1
+    p += 1
+
+  # Final avalanche mixing
+  result = avalanche64(result)
 
 proc reset*(state: var XxHash64State) =
   ## Reset the hasher to initial state.
@@ -114,41 +218,6 @@ proc reset*(state: var XxHash64State) =
 
   let s = state.seed
   state = XxHash64.init(HashSeed(s))
-
-# =============================================================================
-# Utility Functions
-# =============================================================================
-
-proc avalanche64*(h: uint64): uint64 =
-  ## Final avalanche mixing for 64-bit hash.
-  ## Ensures every input bit affects every output bit.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result = h
-  ## result = result xor (result shr 33)
-  ## result *= XXH_PRIME64_2
-  ## result = result xor (result shr 29)
-  ## result *= XXH_PRIME64_3
-  ## result = result xor (result shr 32)
-  ## ```
-
-  # Stub
-  result = h
-
-proc round64*(acc: uint64, input: uint64): uint64 =
-  ## One round of xxHash64 processing.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result = acc + input * XXH_PRIME64_2
-  ## result = result shl 31
-  ## result = result xor result
-  ## result *= XXH_PRIME64_1
-  ## ```
-
-  # Stub
-  result = acc + input
 
 # =============================================================================
 # SIMD Acceleration (Future)

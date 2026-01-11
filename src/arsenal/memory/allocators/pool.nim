@@ -16,14 +16,9 @@ type
     blockSize: int
     allocated: int
 
-proc init*(_: typedesc[PoolAllocator[T]], blockSize: int = 1024): PoolAllocator[T] =
+proc init*[T](_: typedesc[PoolAllocator[T]], blockSize: int = 1024): PoolAllocator[T] =
   ## Create a pool allocator.
   ## blockSize: Number of objects to allocate per block.
-  ##
-  ## IMPLEMENTATION:
-  ## Initialize empty free list and block list.
-  ## First allocation will create the first block.
-
   result.blockSize = blockSize
   result.freeList = @[]
   result.blocks = @[]
@@ -31,46 +26,31 @@ proc init*(_: typedesc[PoolAllocator[T]], blockSize: int = 1024): PoolAllocator[
 
 proc `=destroy`*[T](p: var PoolAllocator[T]) =
   ## Free all allocated blocks.
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## for block in p.blocks:
-  ##   dealloc(block)
-  ## p.blocks.setLen(0)
-  ## p.freeList.setLen(0)
-  ## ```
+  for blk in p.blocks:
+    dealloc(blk)
+  p.blocks.setLen(0)
+  p.freeList.setLen(0)
 
-  # TODO: Free all blocks
-
-proc alloc*(p: var PoolAllocator[T]): ptr T =
+proc alloc*[T](p: var PoolAllocator[T]): ptr T =
   ## Allocate one object. O(1) operation.
-  ##
-  ## IMPLEMENTATION:
-  ## 1. If free list is not empty, pop from free list
-  ## 2. Otherwise, allocate a new block and slice it up
-  ##
-  ## ```nim
-  ## if p.freeList.len > 0:
-  ##   result = p.freeList.pop()
-  ## else:
-  ##   # Allocate new block
-  ##   let block = cast[ptr UncheckedArray[T]](
-  ##     alloc(p.blockSize * sizeof(T))
-  ##   )
-  ##   p.blocks.add(block)
-  ##
-  ##   # Add all objects except first to free list
-  ##   for i in 1..<p.blockSize:
-  ##     p.freeList.add(addr block[i])
-  ##
-  ##   result = addr block[0]
-  ##
-  ## inc p.allocated
-  ## ```
+  if p.freeList.len > 0:
+    result = p.freeList.pop()
+  else:
+    # Allocate new block
+    let blk = cast[ptr UncheckedArray[T]](
+      alloc0(p.blockSize * sizeof(T))
+    )
+    p.blocks.add(blk)
 
-  # Stub implementation
-  return nil
+    # Add all objects except first to free list
+    for i in 1..<p.blockSize:
+      p.freeList.add(addr blk[i])
 
-proc dealloc*(p: var PoolAllocator[T], obj: ptr T) =
+    result = addr blk[0]
+
+  inc p.allocated
+
+proc dealloc*[T](p: var PoolAllocator[T], obj: ptr T) =
   ## Return object to the pool. O(1) operation.
   ##
   ## IMPLEMENTATION:
@@ -86,30 +66,29 @@ proc dealloc*(p: var PoolAllocator[T], obj: ptr T) =
     p.freeList.add(obj)
     dec p.allocated
 
-proc alloc*(p: var PoolAllocator[T], size: int): pointer =
+proc alloc*[T](p: var PoolAllocator[T], size: int): pointer =
   ## Pool allocators only support allocating sizeof(T).
   ## If size != sizeof(T), return nil.
-
   if size == sizeof(T):
     result = p.alloc()
   else:
     result = nil
 
-proc alloc*(p: var PoolAllocator[T], size: int, alignment: int): pointer =
+proc alloc*[T](p: var PoolAllocator[T], size: int, alignment: int): pointer =
   ## Same as alloc(size), but check alignment too.
   if size == sizeof(T) and alignment <= alignof(T):
     result = p.alloc()
   else:
     result = nil
 
-proc realloc*(p: var PoolAllocator[T], obj: pointer, newSize: int): pointer =
+proc realloc*[T](p: var PoolAllocator[T], obj: pointer, newSize: int): pointer =
   ## Pool allocators don't support realloc.
   return nil
 
-proc len*(p: PoolAllocator[T]): int =
+proc len*[T](p: PoolAllocator[T]): int =
   ## Return number of currently allocated objects.
   p.allocated
 
-proc capacity*(p: PoolAllocator[T]): int =
+proc capacity*[T](p: PoolAllocator[T]): int =
   ## Return total capacity (allocated + free).
   p.allocated + p.freeList.len

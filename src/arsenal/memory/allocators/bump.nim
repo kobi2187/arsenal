@@ -18,76 +18,38 @@ type
 proc init*(_: typedesc[BumpAllocator], size: int): BumpAllocator =
   ## Create a bump allocator with a fixed-size buffer.
   ## All allocations must fit within this buffer.
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Allocate aligned buffer
-  ## 2. Initialize offset to 0
-  ##
-  ## ```nim
-  ## result.size = size
-  ## result.offset = 0
-  ## result.buffer = cast[ptr UncheckedArray[byte]](
-  ##   alignedAlloc(size, 64)  # Cache line alignment
-  ## )
-  ## ```
-
   result.size = size
   result.offset = 0
-  # TODO: Allocate buffer
+  # Allocate aligned buffer (use system alloc for now, could be aligned in production)
+  result.buffer = cast[ptr UncheckedArray[byte]](alloc0(size))
 
 proc `=destroy`*(a: var BumpAllocator) =
   ## Free the allocator's buffer.
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if a.buffer != nil:
-  ##   alignedDealloc(a.buffer)
-  ##   a.buffer = nil
-  ## ```
-
-  # TODO: Free buffer
+  if a.buffer != nil:
+    dealloc(a.buffer)
+    a.buffer = nil
 
 proc alloc*(a: var BumpAllocator, size: int): pointer =
   ## Allocate memory. Never fails - if out of space, returns nil.
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Round up size to alignment boundary
-  ## 2. Check if we have enough space
-  ## 3. Bump the offset and return pointer
-  ##
-  ## ```nim
-  ## let alignedSize = (size + 7) and not 7  # 8-byte alignment
-  ##
-  ## if a.offset + alignedSize > a.size:
-  ##   return nil  # Out of memory
-  ##
-  ## result = addr a.buffer[a.offset]
-  ## a.offset += alignedSize
-  ## ```
+  # 8-byte alignment
+  let alignedSize = (size + 7) and not 7
 
-  # Stub implementation
-  return nil
+  if a.offset + alignedSize > a.size:
+    return nil  # Out of memory
+
+  result = addr a.buffer[a.offset]
+  a.offset += alignedSize
 
 proc alloc*(a: var BumpAllocator, size: int, alignment: int): pointer =
   ## Allocate with specific alignment.
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Align current offset to alignment boundary
-  ## 2. Then allocate as normal
-  ##
-  ## ```nim
-  ## # Align offset to next alignment boundary
-  ## let alignedOffset = (a.offset + alignment - 1) and not (alignment - 1)
-  ## let padding = alignedOffset - a.offset
-  ##
-  ## if alignedOffset + size > a.size:
-  ##   return nil
-  ##
-  ## result = addr a.buffer[alignedOffset]
-  ## a.offset = alignedOffset + size
-  ## ```
+  # Align offset to next alignment boundary
+  let alignedOffset = (a.offset + alignment - 1) and not (alignment - 1)
 
-  # Stub implementation
-  return nil
+  if alignedOffset + size > a.size:
+    return nil
+
+  result = addr a.buffer[alignedOffset]
+  a.offset = alignedOffset + size
 
 proc dealloc*(a: var BumpAllocator, p: pointer) {.inline.} =
   ## No-op for bump allocator. Memory is freed by reset().

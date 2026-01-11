@@ -152,22 +152,14 @@ proc detectCpuFeatures*(): CpuFeatures =
 
 proc getPlatformInfo*(): PlatformInfo =
   ## Returns static platform information.
-  ##
-  ## IMPLEMENTATION NOTES:
-  ## - `cpuCount`: Use `countProcessors()` from std/os or
-  ##   Linux: Read `/proc/cpuinfo` or `sysconf(_SC_NPROCESSORS_ONLN)`
-  ##   macOS: `sysctlbyname("hw.ncpu", ...)`
-  ##   Windows: `GetSystemInfo()` → `dwNumberOfProcessors`
-  ## - `pageSize`:
-  ##   Linux/macOS: `sysconf(_SC_PAGESIZE)`
-  ##   Windows: `GetSystemInfo()` → `dwPageSize`
+  import std/os
 
   result = PlatformInfo(
     os: hostOS,
     arch: hostCPU,
     ptrSize: sizeof(pointer),
     pageSize: DefaultPageSize,
-    cpuCount: 1  # TODO: Detect actual count
+    cpuCount: countProcessors()
   )
 
 # =============================================================================
