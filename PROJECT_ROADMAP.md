@@ -313,12 +313,12 @@ benchmark "context switch":
 - [✓] **M3.3.7** Benchmark throughput (target: >10M ops/sec)
 
 #### M3.4: MPMC Queue (Multi-Producer Multi-Consumer)
-- [ ] **M3.4.1** Create `src/arsenal/concurrency/queues/mpmc.nim`
-- [ ] **M3.4.2** Implement Dmitry Vyukov's bounded MPMC queue
-- [ ] **M3.4.3** Define `Cell` struct with sequence number
-- [ ] **M3.4.4** Implement `push()`, `pop()` with CAS loops
-- [ ] **M3.4.5** Handle ABA problem with sequence numbers
-- [ ] **M3.4.6** Benchmark with varying producer/consumer counts
+- [✓] **M3.4.1** Create `src/arsenal/concurrency/queues/mpmc.nim`
+- [✓] **M3.4.2** Implement Dmitry Vyukov's bounded MPMC queue
+- [✓] **M3.4.3** Define `Cell` struct with sequence number
+- [✓] **M3.4.4** Implement `push()`, `pop()` with CAS loops
+- [✓] **M3.4.5** Handle ABA problem with sequence numbers
+- [✓] **M3.4.6** Benchmark with varying producer/consumer counts
 
 ### Acceptance Criteria
 - [ ] SPSC: >10M ops/sec single-threaded
