@@ -22,6 +22,22 @@ When you find a limitation or cut corners in implementation, add it here!
   - Should convert to underlying integer type
   - Test case: `tests/test_atomics.nim` - "LIMITATION: enum types not supported yet"
 
+### Platform Support Limitations
+- [ ] **MSVC/Windows intrinsics not implemented**
+  - Currently falls back to NON-ATOMIC operations on Windows with MSVC!
+  - All operations have `TODO` comments with required intrinsics:
+    - `load()`: Should use `_InterlockedCompareExchange_acq` for Acquire
+    - `store()`: Should use `_InterlockedExchange` for SeqCst
+    - `exchange()`: Should use `_InterlockedExchange` family
+    - `compareExchange()`: Should use `_InterlockedCompareExchange` family
+    - `fetchAdd()`: Should use `_InterlockedExchangeAdd` family
+    - `fetchSub()`: Should use `_InterlockedExchangeAdd` with negative
+    - `fetchAnd()`: Should use `_InterlockedAnd` family
+    - `fetchOr()`: Should use `_InterlockedOr` family
+    - `fetchXor()`: Should use `_InterlockedXor` family
+  - See: https://docs.microsoft.com/en-us/cpp/intrinsics/compiler-intrinsics
+  - **CRITICAL**: Windows builds are currently UNSAFE for concurrent use!
+
 ### Missing Features
 - [ ] Weak memory ordering optimization for ARM
   - Currently treats all as strong, could be more efficient

@@ -4,6 +4,10 @@
 ## Provides C++11-style atomic operations with explicit memory ordering.
 ## This is the foundation for all lock-free data structures.
 ##
+## **PLATFORM SUPPORT:**
+## - GCC/Clang (Linux, macOS): Fully supported ✓
+## - MSVC (Windows): NOT IMPLEMENTED - falls back to non-atomic operations!
+##
 ## Memory Ordering Guide:
 ## - `Relaxed`: No ordering guarantees. Use for counters where order doesn't matter.
 ## - `Acquire`: Reads after this see writes before the corresponding Release.
@@ -19,6 +23,10 @@
 ## ```
 
 import std/options
+
+# Compile-time warning for unsupported platforms
+when defined(vcc):
+  {.warning: "MSVC atomics not implemented! Falling back to NON-ATOMIC operations. DO NOT use in production on Windows with MSVC. See atomic.nim TODOs.".}
 
 type
   MemoryOrder* = enum
@@ -84,6 +92,16 @@ proc load*[T](a: Atomic[T], order: MemoryOrder = SeqCst): T {.inline.} =
     {.emit: """
       `result` = __atomic_load_n(&`a`.value, `order`);
     """.}
+  elif defined(vcc):
+    # TODO: Implement proper MSVC intrinsics for Windows
+    # Should use:
+    # - InterlockedCompareExchange with same value for SeqCst
+    # - _InterlockedCompareExchange_acq for Acquire
+    # - Simple volatile read for Relaxed (on x86)
+    # See: https://docs.microsoft.com/en-us/cpp/intrinsics/compiler-intrinsics
+    {.emit: """
+      `result` = *((volatile `T`*)&`a`.value);
+    """.}
   else:
     # Fallback: volatile read (not fully atomic on all platforms)
     {.emit: """
@@ -96,8 +114,17 @@ proc store*[T](a: var Atomic[T], val: T, order: MemoryOrder = SeqCst) {.inline.}
     {.emit: """
       __atomic_store_n(&`a`->value, `val`, `order`);
     """.}
+  elif defined(vcc):
+    # TODO: Implement proper MSVC intrinsics for Windows
+    # Should use:
+    # - Relaxed/Release: Simple MOV (x86 stores are naturally Release)
+    # - SeqCst: XCHG or MOV + MFENCE
+    # - Use _InterlockedExchange for SeqCst on x86
+    {.emit: """
+      *((volatile `T`*)&`a`->value) = `val`;
+    """.}
   else:
-    # Fallback: volatile write
+    # Fallback: volatile write (not fully atomic)
     {.emit: """
       *((volatile `T`*)&`a`->value) = `val`;
     """.}
@@ -108,12 +135,21 @@ proc store*[T](a: var Atomic[T], val: T, order: MemoryOrder = SeqCst) {.inline.}
 
 proc exchange*[T](a: var Atomic[T], val: T, order: MemoryOrder = SeqCst): T {.inline.} =
   ## Atomically replace the value and return the old value.
+  ##
+  ## On x86: XCHG instruction (always has implicit lock prefix).
+  ## On ARM: LDXR/STXR loop or SWPAL (ARMv8.1 LSE).
   when defined(gcc) or defined(clang) or defined(llvm_gcc):
     {.emit: """
       `result` = __atomic_exchange_n(&`a`->value, `val`, `order`);
     """.}
+  elif defined(vcc):
+    # TODO: Implement proper MSVC intrinsics for Windows
+    # Should use _InterlockedExchange family
+    # WARNING: This fallback is NOT atomic!
+    result = a.value
+    a.value = val
   else:
-    # Fallback: not atomic
+    # Fallback: NOT atomic!
     result = a.value
     a.value = val
 
@@ -142,8 +178,21 @@ proc compareExchange*[T](a: var Atomic[T], expected: var T, desired: T,
         `successOrder`, `failureOrder`
       );
     """.}
+  elif defined(vcc):
+    # TODO: Implement proper MSVC intrinsics for Windows
+    # Should use _InterlockedCompareExchange family
+    # - _InterlockedCompareExchange for SeqCst
+    # - _InterlockedCompareExchange_acq for Acquire
+    # - _InterlockedCompareExchange_rel for Release
+    # WARNING: This fallback is NOT atomic!
+    if a.value == expected:
+      a.value = desired
+      result = true
+    else:
+      expected = a.value
+      result = false
   else:
-    # Fallback: non-atomic simulation
+    # Fallback: NOT atomic!
     if a.value == expected:
       a.value = desired
       result = true
@@ -168,6 +217,10 @@ proc compareExchangeWeak*[T](a: var Atomic[T], expected: var T, desired: T,
         `successOrder`, `failureOrder`
       );
     """.}
+  elif defined(vcc):
+    # TODO: Same MSVC intrinsics as strong CAS (x86 doesn't differentiate)
+    # Fallback to strong version
+    compareExchange(a, expected, desired, successOrder, failureOrder)
   else:
     # Fallback: same as strong
     compareExchange(a, expected, desired, successOrder, failureOrder)
@@ -187,8 +240,14 @@ proc fetchAdd*[T: SomeInteger](a: var Atomic[T], val: T,
     {.emit: """
       `result` = __atomic_fetch_add(&`a`->value, `val`, `order`);
     """.}
+  elif defined(vcc):
+    # TODO: Implement proper MSVC intrinsics for Windows
+    # Should use _InterlockedExchangeAdd family
+    # WARNING: This fallback is NOT atomic!
+    result = a.value
+    a.value = a.value + val
   else:
-    # Fallback: non-atomic
+    # Fallback: NOT atomic!
     result = a.value
     a.value = a.value + val
 
@@ -200,8 +259,13 @@ proc fetchSub*[T: SomeInteger](a: var Atomic[T], val: T,
     {.emit: """
       `result` = __atomic_fetch_sub(&`a`->value, `val`, `order`);
     """.}
+  elif defined(vcc):
+    # TODO: Use _InterlockedExchangeAdd with negative value
+    # WARNING: This fallback is NOT atomic!
+    result = a.value
+    a.value = a.value - val
   else:
-    # Fallback: non-atomic
+    # Fallback: NOT atomic!
     result = a.value
     a.value = a.value - val
 
@@ -213,8 +277,13 @@ proc fetchAnd*[T: SomeInteger](a: var Atomic[T], val: T,
     {.emit: """
       `result` = __atomic_fetch_and(&`a`->value, `val`, `order`);
     """.}
+  elif defined(vcc):
+    # TODO: Use _InterlockedAnd family
+    # WARNING: This fallback is NOT atomic!
+    result = a.value
+    a.value = a.value and val
   else:
-    # Fallback: non-atomic
+    # Fallback: NOT atomic!
     result = a.value
     a.value = a.value and val
 
@@ -226,8 +295,13 @@ proc fetchOr*[T: SomeInteger](a: var Atomic[T], val: T,
     {.emit: """
       `result` = __atomic_fetch_or(&`a`->value, `val`, `order`);
     """.}
+  elif defined(vcc):
+    # TODO: Use _InterlockedOr family
+    # WARNING: This fallback is NOT atomic!
+    result = a.value
+    a.value = a.value or val
   else:
-    # Fallback: non-atomic
+    # Fallback: NOT atomic!
     result = a.value
     a.value = a.value or val
 
@@ -239,8 +313,13 @@ proc fetchXor*[T: SomeInteger](a: var Atomic[T], val: T,
     {.emit: """
       `result` = __atomic_fetch_xor(&`a`->value, `val`, `order`);
     """.}
+  elif defined(vcc):
+    # TODO: Use _InterlockedXor family
+    # WARNING: This fallback is NOT atomic!
+    result = a.value
+    a.value = a.value xor val
   else:
-    # Fallback: non-atomic
+    # Fallback: NOT atomic!
     result = a.value
     a.value = a.value xor val
 
