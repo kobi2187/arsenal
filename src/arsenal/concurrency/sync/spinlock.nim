@@ -67,35 +67,34 @@ proc tryAcquire*(lock: var Spinlock): bool {.inline.} =
 
 proc acquire*(lock: var Spinlock) =
   ## Acquire the lock, spinning until successful.
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Fast path: Try atomic exchange
-  ## 2. If failed, spin-wait with backoff:
-  ##    a. First, spin on read (avoids cache line bouncing)
-  ##    b. Then try atomic exchange again
-  ##    c. Use `spinHint()` (PAUSE instruction) in loop
-  ##    d. Optionally: exponential backoff or yield after N iterations
-  ##
-  ## ```nim
-  ## while lock.locked.exchange(true, Acquire):
-  ##   while lock.locked.load(Relaxed):
-  ##     spinHint()
-  ## ```
-  ##
-  ## The inner loop reads without writing, which is more cache-friendly
-  ## when there's high contention.
+  ## Uses test-and-test-and-set with exponential backoff to reduce
+  ## cache line contention.
 
-  let cfg = getConfig()
-  var spins = 0
+  # Fast path: try once without backoff
+  if lock.tryAcquire():
+    return
 
-  while not lock.tryAcquire():
-    # Spin on read to avoid cache line bouncing
+  # Slow path: spin with exponential backoff
+  var backoff = 1
+  const maxBackoff = 64
+
+  while true:
+    # Test-and-test-and-set: check if unlocked before attempting CAS
+    # This reduces cache coherence traffic
     while lock.locked.load(Relaxed):
-      spinHint()
-      inc spins
-      if spins > cfg.spinIterations and not cfg.busyWait:
-        # Could yield to OS here if not in busy-wait mode
-        discard
+      # Exponential backoff
+      for _ in 0..<backoff:
+        spinHint()
+
+      backoff = min(backoff * 2, maxBackoff)
+
+    # Lock appears free, try to acquire
+    if lock.tryAcquire():
+      return
+
+    # Reset backoff after a failed acquisition attempt
+    # (someone else got it while we were checking)
+    backoff = 1
 
 proc release*(lock: var Spinlock) {.inline.} =
   ## Release the lock.
@@ -127,23 +126,21 @@ proc init*(_: typedesc[TicketLock]): TicketLock {.inline.} =
 
 proc acquire*(lock: var TicketLock) =
   ## Acquire the lock with FIFO fairness.
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Atomically get a ticket number: `myTicket = nextTicket.fetchAdd(1)`
-  ## 2. Spin until `nowServing == myTicket`
-  ##
-  ## ```nim
-  ## let myTicket = lock.nextTicket.fetchAdd(1, Relaxed)
-  ## while lock.nowServing.load(Acquire) != myTicket:
-  ##   spinHint()
-  ## ```
-  ##
-  ## Tickets wrap around at 2^32, which is fine as long as there
-  ## aren't 2^32 threads waiting simultaneously.
+  ## Uses exponential backoff while waiting for our turn.
 
+  # Get our ticket number
   let myTicket = lock.nextTicket.fetchAdd(1, Relaxed)
+
+  var backoff = 1
+  const maxBackoff = 64
+
+  # Wait until it's our turn
   while lock.nowServing.load(Acquire) != myTicket:
-    spinHint()
+    # Exponential backoff
+    for _ in 0..<backoff:
+      spinHint()
+
+    backoff = min(backoff * 2, maxBackoff)
 
 proc release*(lock: var TicketLock) {.inline.} =
   ## Release the lock, advancing to next ticket.
