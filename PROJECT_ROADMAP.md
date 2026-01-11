@@ -650,20 +650,20 @@ wrk -t4 -c10000 -d30s http://127.0.0.1:8080/
 ### Tasks
 
 #### M8.1: Allocator Trait
-- [ ] **M8.1.1** Create `src/arsenal/memory/allocator.nim`
-- [ ] **M8.1.2** Define `Allocator` concept
-- [ ] **M8.1.3** Define `alloc()`, `dealloc()`, `realloc()` interface
+- [✓] **M8.1.1** Create `src/arsenal/memory/allocator.nim`
+- [✓] **M8.1.2** Define `Allocator` concept
+- [✓] **M8.1.3** Define `alloc()`, `dealloc()`, `realloc()` interface
 
 #### M8.2: Bump Allocator (Pure Nim)
-- [ ] **M8.2.1** Create `src/arsenal/memory/allocators/bump.nim`
-- [ ] **M8.2.2** Implement linear allocation (~50 lines)
-- [ ] **M8.2.3** Implement `reset()` to reuse buffer
-- [ ] **M8.2.4** Benchmark allocation speed
+- [✓] **M8.2.1** Create `src/arsenal/memory/allocators/bump.nim`
+- [✓] **M8.2.2** Implement linear allocation (~50 lines)
+- [✓] **M8.2.3** Implement `reset()` to reuse buffer
+- [✓] **M8.2.4** Benchmark allocation speed
 
 #### M8.3: Pool Allocator (Pure Nim)
-- [ ] **M8.3.1** Create `src/arsenal/memory/allocators/pool.nim`
-- [ ] **M8.3.2** Implement fixed-size block pool
-- [ ] **M8.3.3** Use free list for O(1) alloc/dealloc
+- [✓] **M8.3.1** Create `src/arsenal/memory/allocators/pool.nim`
+- [✓] **M8.3.2** Implement fixed-size block pool
+- [✓] **M8.3.3** Use free list for O(1) alloc/dealloc
 
 #### M8.4: mimalloc Binding
 - [ ] **M8.4.1** Download mimalloc to `vendor/mimalloc/`
