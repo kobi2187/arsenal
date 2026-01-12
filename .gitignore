@@ -25,6 +25,10 @@ bin/
 build/
 dist/
 
+# Test binaries (compiled by nim c -r)
+tests/test_*
+!tests/test_*.nim
+
 # Test coverage
 *.lcov
 
