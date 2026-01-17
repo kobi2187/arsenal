@@ -152,11 +152,11 @@ Each `proc` includes `## IMPLEMENTATION:` sections showing exactly how to implem
 - [x] M6: Go-style DSL (`go` macro, unified scheduler) - ✅ COMPLETE
 - [x] M7: Echo server (integration test) - ✅ COMPLETE
 
-### Phase C: Performance ✅ STUBS DOCUMENTED
-- [x] M8: Allocators (bump, pool, mimalloc concepts)
-- [x] M9: Hashing & data structures (xxHash64, wyhash, Swiss tables)
-- [x] M10: Compression (LZ4, Zstd bindings)
-- [x] M11: Parsing (simdjson, picohttpparser bindings)
+### Phase C: Performance ✅ CORE COMPLETE (Pragmatic: Implementations + Bindings)
+- [x] M8: Allocators - ✅ COMPLETE (bump, pool implemented & tested)
+- [x] M9: Hashing - ✅ IMPLEMENTED (xxHash64 complete, wyhash stub)
+- [x] M10: Compression - 📝 BINDINGS READY (LZ4, Zstd stubs for C libraries)
+- [x] M11: Parsing - 📝 BINDINGS READY (simdjson, picohttpparser stubs)
 
 ### Phase D: Primitives & Low-Level ✅ STUBS DOCUMENTED
 - [x] M18: Cryptography (libsodium bindings: ChaCha20, Ed25519, BLAKE2b)
