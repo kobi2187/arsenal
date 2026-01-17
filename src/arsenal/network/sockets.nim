@@ -185,8 +185,24 @@ proc setNonBlocking*(sock: cint, enable: bool = true): cint =
   ##   result = fcntl(sock, F_SETFL, newFlags)
   ## ```
 
-  # Stub - requires fcntl
-  0
+  when defined(posix):
+    # Declare fcntl
+    proc fcntl(fd: cint, cmd: cint, arg: clong = 0): cint
+      {.importc, header: "<fcntl.h>", varargs.}
+
+    const
+      F_GETFL = 3
+      F_SETFL = 4
+
+    let flags = fcntl(sock, F_GETFL)
+    if flags < 0:
+      return flags
+
+    let newFlags = if enable: flags or SOCK_NONBLOCK.cint else: flags and not SOCK_NONBLOCK.cint
+    result = fcntl(sock, F_SETFL, newFlags.clong)
+  else:
+    # Windows or other platforms
+    0
 
 # =============================================================================
 # Byte Order Conversion
