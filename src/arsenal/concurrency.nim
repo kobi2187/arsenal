@@ -273,3 +273,45 @@ template retry*(op: untyped): untyped =
 
 # Export options for ergonomic unpacking
 export options.Option, options.some, options.none, options.isSome, options.isNone, options.get
+
+# =============================================================================
+# High-Level Concurrency (M2-M6: Coroutines, Channels, Go-style DSL)
+# =============================================================================
+
+# Coroutines
+import concurrency/coroutines/coroutine
+export coroutine.Coroutine, coroutine.CoroutineState
+export coroutine.newCoroutine, coroutine.resume, coroutine.destroy
+export coroutine.isFinished, coroutine.isSuspended, coroutine.isReady
+export coroutine.coroYield, coroutine.running
+
+# Scheduler
+import concurrency/scheduler
+export scheduler.ready, scheduler.schedule, scheduler.spawn
+export scheduler.runNext, scheduler.runAll, scheduler.runUntilEmpty
+export scheduler.hasPending, scheduler.currentCoroutine
+
+# Channels
+import concurrency/channels/channel
+export channel.Chan, channel.BufferedChan
+export channel.newChan, channel.newBufferedChan
+export channel.send, channel.recv, channel.trySend, channel.tryRecv
+export channel.close, channel.isClosed
+# Note: len and cap are already exported for Queue, avoid conflicts
+
+# Select
+import concurrency/channels/select
+export select.select, select.sendTo, select.recvFrom
+
+# Go-style DSL
+import concurrency/dsl/go_macro
+export go_macro.go, go_macro.`<-`
+
+# =============================================================================
+# Convenience Helpers
+# =============================================================================
+
+proc runScheduler*() =
+  ## Run the scheduler until all coroutines complete.
+  ## Alias for runAll() for Go-style code.
+  runAll()

@@ -76,92 +76,78 @@ type
 
 proc initEpoll*(maxEvents: int = 1024): EpollBackend =
   ## Initialize epoll backend.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result.epfd = epoll_create1(0)
-  ## if result.epfd < 0:
-  ##   raise newException(OSError, "epoll_create1 failed")
-  ## result.events = newSeq[EpollEvent](maxEvents)
-  ## result.maxEvents = maxEvents
-  ## ```
-
   result.maxEvents = maxEvents
   result.events = newSeq[EpollEvent](maxEvents)
-  # TODO: Call epoll_create1
+  result.epfd = epoll_create1(0)
+  if result.epfd < 0:
+    raise newException(OSError, "epoll_create1 failed")
 
 proc destroyEpoll*(backend: var EpollBackend) =
   ## Clean up epoll backend.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if backend.epfd >= 0:
-  ##   discard close(backend.epfd)
-  ##   backend.epfd = -1
-  ## ```
-
-  discard
+  when defined(linux):
+    if backend.epfd >= 0:
+      {.emit: """
+      #include <unistd.h>
+      close(`backend`.epfd);
+      """.}
+      backend.epfd = -1
 
 proc addFd*(backend: var EpollBackend, fd: int, events: uint32, data: pointer = nil) =
   ## Add file descriptor to epoll interest list.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## var event: EpollEvent
-  ## event.events = events
-  ## event.data.ptr = data
-  ##
-  ## if epoll_ctl(backend.epfd, EPOLL_CTL_ADD, fd.cint, addr event) < 0:
-  ##   raise newException(OSError, "epoll_ctl ADD failed")
-  ## ```
+  var event: EpollEvent
+  event.events = events
+  if data != nil:
+    event.data.`ptr` = data
+  else:
+    event.data.fd = fd.cint
 
-  discard
+  if epoll_ctl(backend.epfd, EPOLL_CTL_ADD, fd.cint, addr event) < 0:
+    raise newException(OSError, "epoll_ctl ADD failed")
 
 proc modifyFd*(backend: var EpollBackend, fd: int, events: uint32, data: pointer = nil) =
   ## Modify events for file descriptor.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## var event: EpollEvent
-  ## event.events = events
-  ## event.data.ptr = data
-  ##
-  ## if epoll_ctl(backend.epfd, EPOLL_CTL_MOD, fd.cint, addr event) < 0:
-  ##   raise newException(OSError, "epoll_ctl MOD failed")
-  ## ```
+  var event: EpollEvent
+  event.events = events
+  if data != nil:
+    event.data.`ptr` = data
+  else:
+    event.data.fd = fd.cint
 
-  discard
+  if epoll_ctl(backend.epfd, EPOLL_CTL_MOD, fd.cint, addr event) < 0:
+    raise newException(OSError, "epoll_ctl MOD failed")
 
 proc removeFd*(backend: var EpollBackend, fd: int) =
   ## Remove file descriptor from epoll.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if epoll_ctl(backend.epfd, EPOLL_CTL_DEL, fd.cint, nil) < 0:
-  ##   # Ignore errors - fd might already be closed
-  ##   discard
-  ## ```
-
-  discard
+  if epoll_ctl(backend.epfd, EPOLL_CTL_DEL, fd.cint, nil) < 0:
+    # Ignore errors - fd might already be closed
+    discard
 
 proc wait*(backend: var EpollBackend, timeoutMs: int): seq[EpollEvent] =
   ## Wait for I/O events.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## let n = epoll_wait(
-  ##   backend.epfd,
-  ##   addr backend.events[0],
-  ##   backend.maxEvents.cint,
-  ##   timeoutMs.cint
-  ## )
-  ##
-  ## if n < 0:
-  ##   if errno == EINTR:
-  ##     return @[]  # Interrupted by signal
-  ##   raise newException(OSError, "epoll_wait failed")
-  ##
-  ## result = backend.events[0..<n]
-  ## ```
+  ## Returns array of ready events.
+  let n = epoll_wait(
+    backend.epfd,
+    addr backend.events[0],
+    backend.maxEvents.cint,
+    timeoutMs.cint
+  )
 
-  result = @[]
+  if n < 0:
+    # Check for EINTR (interrupted by signal)
+    when defined(linux):
+      var errno: cint
+      {.emit: """
+      #include <errno.h>
+      `errno` = errno;
+      """.}
+      const EINTR = 4  # Standard EINTR value on Linux
+      if errno == EINTR:
+        return @[]  # Interrupted by signal, return empty
+    raise newException(OSError, "epoll_wait failed")
+
+  if n == 0:
+    return @[]  # Timeout
+
+  result = newSeq[EpollEvent](n)
+  for i in 0..<n:
+    result[i] = backend.events[i]
