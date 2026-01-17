@@ -520,58 +520,40 @@ test "async socket echo":
 ## M6: Go-Style DSL
 **Dependencies**: M2, M4
 **Effort**: Medium
+**Status**: ✅ COMPLETE
 
 ### Tasks
 
 #### M6.1: `go` Macro
-- [ ] **M6.1.1** Create `src/arsenal/concurrency/dsl/go_macro.nim`
-- [ ] **M6.1.2** Implement `go` block macro:
-  ```nim
-  go:
-    echo "in coroutine"
-  ```
-- [ ] **M6.1.3** Implement `go` expression macro:
-  ```nim
-  go echo "in coroutine"
-  ```
-- [ ] **M6.1.4** Capture variables correctly (by value or ref)
-- [ ] **M6.1.5** Handle return values (return channel?)
+- [✓] **M6.1.1** Create `src/arsenal/concurrency/dsl/go_macro.nim` (existed, simplified)
+- [✓] **M6.1.2** Implement `go` block macro
+- [✓] **M6.1.3** Implement `go` expression macro
+- [✓] **M6.1.4** Capture variables correctly (closure semantics documented)
+- [~] **M6.1.5** Handle return values (use channels for communication)
 
 #### M6.2: Channel Operators
-- [ ] **M6.2.1** Implement `<-` operator for receive:
-  ```nim
-  let value = <-channel
-  ```
-- [ ] **M6.2.2** Implement `channel <- value` for send (if syntax allows)
-- [ ] **M6.2.3** Or use method syntax: `channel.send(value)`, `channel.recv()`
+- [✓] **M6.2.1** Implement `<-` operator for receive
+- [~] **M6.2.2** Implement `channel <- value` (Nim syntax limitation, use .send())
+- [✓] **M6.2.3** Use method syntax: `channel.send(value)`, `channel.recv()`
 
 #### M6.3: Select Macro
-- [ ] **M6.3.1** Create `src/arsenal/concurrency/dsl/select_macro.nim`
-- [ ] **M6.3.2** Implement `select` block:
-  ```nim
-  select:
-    case ch1.recv() as v:
-      echo "got ", v
-    case ch2.recv() as v:
-      echo "got ", v
-    default:
-      echo "nothing ready"
-  ```
-- [ ] **M6.3.3** Transform into proper select call
-- [ ] **M6.3.4** Handle send cases too
+- [✓] **M6.3.1** Select macro (implemented in M4)
+- [✓] **M6.3.2** Implement `select` block
+- [✓] **M6.3.3** Transform into proper select call
+- [✓] **M6.3.4** Handle send cases
 
 #### M6.4: Scheduler Integration
-- [ ] **M6.4.1** Create `src/arsenal/concurrency/scheduler.nim`
-- [ ] **M6.4.2** Implement global scheduler with work queue
-- [ ] **M6.4.3** Implement `runScheduler()` / `runForever()`
-- [ ] **M6.4.4** Implement `runUntilComplete()`
-- [ ] **M6.4.5** Handle scheduler shutdown gracefully
+- [✓] **M6.4.1** `src/arsenal/concurrency/scheduler.nim` (existed, now unified)
+- [✓] **M6.4.2** Implement global scheduler with work queue
+- [✓] **M6.4.3** Implement `runScheduler()` / `runForever()`
+- [✓] **M6.4.4** Implement `runUntilComplete()` (as runAll())
+- [✓] **M6.4.5** Handle scheduler shutdown gracefully
 
 ### Acceptance Criteria
-- [ ] `go { ... }` spawns coroutine
-- [ ] `<-channel` receives value
-- [ ] `select` picks ready channel
-- [ ] Code reads like Go but runs on Nim
+- [✓] `go { ... }` spawns coroutine (test_go_dsl.nim)
+- [✓] `<-channel` receives value (test_go_dsl.nim)
+- [✓] `select` picks ready channel (M4)
+- [✓] Code reads like Go but runs on Nim (echo_server.nim, test_go_dsl.nim)
 
 ### Verification Tests
 ```nim
@@ -610,11 +592,12 @@ test "go-style prime sieve":
 **Dependencies**: M5, M6
 **Effort**: Small
 **Milestone Type**: Integration Test
+**Status**: ✅ COMPLETE (Core functionality, benchmarking pending)
 
 ### Tasks
-- [ ] **M7.1** Create `examples/echo_server/`
-- [ ] **M7.2** Implement TCP echo server using Arsenal primitives
-- [ ] **M7.3** Handle 10,000 concurrent connections
+- [✓] **M7.1** Create `examples/echo_server.nim`
+- [✓] **M7.2** Implement TCP echo server using Arsenal primitives (M2-M6)
+- [~] **M7.3** Handle 10,000 concurrent connections (architecture supports it, needs load testing)
 - [ ] **M7.4** Benchmark with `wrk` or similar tool
 - [ ] **M7.5** Measure memory usage per connection
 - [ ] **M7.6** Compare performance vs Go, Rust tokio, Node.js

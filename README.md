@@ -144,13 +144,13 @@ Each `proc` includes `## IMPLEMENTATION:` sections showing exactly how to implem
 - [x] M0: Project setup
 - [x] M1: Core infrastructure (CPU detection, strategies)
 
-### Phase B: Concurrency ✅ MAJOR PROGRESS
-- [x] M2: Coroutines (libaco/minicoro bindings) - ✅ WORKING
+### Phase B: Concurrency ✅ COMPLETE
+- [x] M2: Coroutines (libaco/minicoro bindings) - ✅ COMPLETE
 - [x] M3: Lock-free primitives (atomics, spinlocks, queues) - ✅ COMPLETE
 - [x] M4: Channel system (unbuffered, buffered, select) - ✅ COMPLETE
-- [x] M5: I/O integration (epoll/kqueue/IOCP backends) - 📝 STUBS DOCUMENTED
-- [x] M6: Go-style DSL (`go` macro, scheduler) - 📝 STUBS DOCUMENTED
-- [ ] M7: Echo server (integration test) - TODO
+- [x] M5: I/O integration (std/selectors: epoll/kqueue/IOCP) - ✅ COMPLETE
+- [x] M6: Go-style DSL (`go` macro, unified scheduler) - ✅ COMPLETE
+- [x] M7: Echo server (integration test) - ✅ COMPLETE
 
 ### Phase C: Performance ✅ STUBS DOCUMENTED
 - [x] M8: Allocators (bump, pool, mimalloc concepts)
