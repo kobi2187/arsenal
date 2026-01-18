@@ -336,21 +336,55 @@ proc update*(state: var XxHash64State, data: openArray[byte]) =
 
 All high-priority stubs have been completed!
 
-### Remaining Items (Low Priority)
+### ✨ Recommended Approach: Use Existing Nim Libraries
+
+Instead of writing C bindings for remaining items, **leverage mature Nim libraries**!
+
+See **[AVAILABLE_NIM_LIBRARIES.md](./AVAILABLE_NIM_LIBRARIES.md)** for comprehensive guide.
+
+**Quick Summary:**
+
+📦 **Compression:**
+- ✅ [Zippy](https://github.com/guzba/zippy) (pure Nim): Deflate, gzip, zlib, zip - actively maintained Jan 2025
+- Replaces: LZ4, Zstd binding stubs
+
+🔐 **Cryptography:**
+- ✅ [nimcrypto](https://github.com/cheatfate/nimcrypto) (pure Nim): SHA-2, SHA-3, Blake2, HMAC
+- ✅ [nim-libsodium](https://github.com/FedericoCeratto/nim-libsodium): Complete libsodium bindings
+- Replaces: Crypto hash stubs
+
+🌐 **HTTP:**
+- ✅ stdlib `asynchttpserver`: Built-in, zero dependencies
+- ✅ httpbeast: High-performance alternative
+- Replaces: picohttpparser binding stub
+
+⚡ **Platform APIs:**
+- ✅ `std/atomics`: Cross-platform atomics (replaces MSVC intrinsics)
+- ✅ `simd.nim`: Stdlib SIMD abstraction
+
+### Benefits of Library Approach
+
+- ✅ Production-ready today (no development needed)
+- ✅ No binding maintenance burden
+- ✅ Better portability (pure Nim works everywhere)
+- ✅ Active community support
+- ✅ Cleaner, more idiomatic codebase
+
+### Remaining Low-Priority Items (Evaluate Need First)
 
 **Platform-Specific:**
-- MSVC atomic intrinsics (Windows only)
-- Embedded HAL implementations (hardware-specific)
+- MSVC intrinsics → Use `std/atomics` instead ✅
+- Embedded HAL → Project-specific, not general library
 
-**External Dependencies:**
-- HTTP parser bindings (picohttpparser)
-- Compression library wrappers (LZ4, Zstd)
+**Optimizations (Profile before implementing):**
+- SIMD → Use stdlib first, hand-optimize only if bottleneck found
+- Swiss table SIMD → Current implementation functional, optimize if profiling shows need
 
-**Optimizations:**
-- SIMD optimizations (StreamVByte decode, colorspace)
-- Swiss table SIMD acceleration (SSE2/AVX2)
+**Bindings (Only if libraries insufficient):**
+- LZ4/Zstd → Use Zippy first, benchmark if truly needed
+- Specialized compression → Assess actual requirements
 
-These are documented placeholders and don't block core functionality.
+These documented placeholders don't block core functionality.
 
 ---
 
