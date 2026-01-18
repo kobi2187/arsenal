@@ -73,18 +73,55 @@ proc alloc*(a: SystemAllocator, size: int): pointer {.inline.} =
 proc alloc*(a: SystemAllocator, size: int, alignment: int): pointer {.inline.} =
   ## Allocate `size` bytes with given alignment.
   ##
-  ## IMPLEMENTATION:
-  ## Use `aligned_alloc` (C11) or `posix_memalign`:
-  ## ```nim
-  ## when defined(posix):
-  ##   var p: pointer
-  ##   discard posix_memalign(addr p, alignment, size)
-  ##   result = p
-  ## else:
-  ##   result = aligned_alloc(alignment, size)
-  ## ```
+  ## Uses POSIX `posix_memalign` or C11 `aligned_alloc` depending on platform.
 
-  result = alloc(size)  # TODO: aligned version
+  when defined(posix):
+    # POSIX version (Linux, macOS, BSD)
+    var p: pointer
+    when declared(posix_memalign):
+      discard posix_memalign(addr p, alignment, size)
+      result = p
+    else:
+      # Fallback: allocate extra and manually align
+      let padding = alignment - 1
+      let raw = alloc(size + padding + sizeof(pointer))
+      if raw == nil:
+        result = nil
+      else:
+        let aligned = (cast[int](raw) + sizeof(pointer) + padding) and not padding
+        let alignedPtr = cast[pointer](aligned)
+        # Store original pointer before aligned block for deallocation
+        cast[ptr pointer](aligned - sizeof(pointer))[] = raw
+        result = alignedPtr
+  elif defined(windows):
+    # Windows version
+    when declared(aligned_malloc):
+      result = aligned_malloc(size, alignment)
+    else:
+      # Fallback for older compilers
+      let padding = alignment - 1
+      let raw = alloc(size + padding + sizeof(pointer))
+      if raw == nil:
+        result = nil
+      else:
+        let aligned = (cast[int](raw) + sizeof(pointer) + padding) and not padding
+        let alignedPtr = cast[pointer](aligned)
+        cast[ptr pointer](aligned - sizeof(pointer))[] = raw
+        result = alignedPtr
+  else:
+    # Generic fallback: manual alignment
+    if alignment <= 0:
+      result = alloc(size)
+    else:
+      let padding = alignment - 1
+      let raw = alloc(size + padding + sizeof(pointer))
+      if raw == nil:
+        result = nil
+      else:
+        let aligned = (cast[int](raw) + sizeof(pointer) + padding) and not padding
+        let alignedPtr = cast[pointer](aligned)
+        cast[ptr pointer](aligned - sizeof(pointer))[] = raw
+        result = alignedPtr
 
 proc dealloc*(a: SystemAllocator, p: pointer) {.inline.} =
   ## Free memory.
@@ -131,17 +168,10 @@ type
 proc init*(_: typedesc[BumpAllocator], capacity: int): BumpAllocator =
   ## Create a bump allocator with given capacity.
   ##
-  ## IMPLEMENTATION:
-  ## Allocate a single large buffer:
-  ## ```nim
-  ## result.buffer = cast[ptr UncheckedArray[byte]](alloc(capacity))
-  ## result.capacity = capacity
-  ## result.offset = 0
-  ## result.owned = true
-  ## ```
+  ## Allocates a single large buffer for arena allocation.
 
   result = BumpAllocator(
-    buffer: nil,  # TODO: Allocate
+    buffer: cast[ptr UncheckedArray[byte]](alloc(capacity)),
     capacity: capacity,
     offset: 0,
     owned: true
@@ -261,29 +291,38 @@ type
 proc init*[T](_: typedesc[PoolAllocator[T]], capacity: int): PoolAllocator[T] =
   ## Create a pool allocator for `capacity` objects of type T.
   ##
-  ## IMPLEMENTATION:
-  ## 1. Allocate buffer for `capacity` objects
-  ## 2. Initialize free list linking all slots
-  ##
-  ## ```nim
-  ## let buffer = cast[ptr UncheckedArray[T]](alloc(capacity * sizeof(T)))
-  ##
-  ## # Link all slots into free list
-  ## for i in 0..<capacity-1:
-  ##   let node = cast[ptr FreeNode](addr buffer[i])
-  ##   node.next = cast[ptr FreeNode](addr buffer[i + 1])
-  ##
-  ## cast[ptr FreeNode](addr buffer[capacity - 1]).next = nil
-  ##
-  ## result.buffer = buffer
-  ## result.freeList = cast[ptr T](addr buffer[0])
-  ## result.capacity = capacity
-  ## result.allocated = 0
-  ## ```
+  ## Allocates buffer and initializes free list linking all slots.
+
+  if capacity <= 0:
+    return PoolAllocator[T](
+      buffer: nil,
+      freeList: nil,
+      capacity: 0,
+      allocated: 0
+    )
+
+  # Allocate buffer for all objects
+  let buffer = cast[ptr UncheckedArray[T]](alloc(capacity * sizeof(T)))
+
+  if buffer == nil:
+    return PoolAllocator[T](
+      buffer: nil,
+      freeList: nil,
+      capacity: 0,
+      allocated: 0
+    )
+
+  # Link all slots into free list
+  for i in 0..<capacity - 1:
+    let node = cast[ptr FreeNode](addr buffer[i])
+    node.next = cast[ptr FreeNode](addr buffer[i + 1])
+
+  # Last node points to nil
+  cast[ptr FreeNode](addr buffer[capacity - 1]).next = nil
 
   result = PoolAllocator[T](
-    buffer: nil,  # TODO: Allocate
-    freeList: nil,
+    buffer: buffer,
+    freeList: cast[ptr T](addr buffer[0]),
     capacity: capacity,
     allocated: 0
   )
