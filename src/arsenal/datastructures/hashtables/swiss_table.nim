@@ -194,6 +194,26 @@ iterator setBits*(mask: BitMask): int =
     inc pos
 
 # =============================================================================
+# Helper Functions
+# =============================================================================
+
+proc getGroup*[K, V](t: SwissTable[K, V], offset: int): Group {.inline.} =
+  ## Get a group of 16 control bytes starting at offset.
+  for i in 0..<16:
+    result.ctrl[i] = t.ctrl[offset + i]
+
+proc firstSetBit(mask: BitMask): int {.inline.} =
+  ## Return index of first set bit (0-15).
+  var m = mask.uint16
+  var pos = 0
+  while m != 0:
+    if (m and 1) != 0:
+      return pos
+    m = m shr 1
+    inc pos
+  return -1
+
+# =============================================================================
 # Table Operations
 # =============================================================================
 
@@ -206,69 +226,68 @@ proc init*[K, V](_: typedesc[SwissTable[K, V]], capacity: int = 16): SwissTable[
   ## 3. Allocate slots array
   ## 4. Initialize all ctrl bytes to Empty
   ## 5. Set sentinel bytes at the end
-  ##
-  ## ```nim
-  ## let cap = max(16, roundUpToGroupSize(capacity))
-  ## result.ctrl = cast[ptr UncheckedArray[CtrlByte]](
-  ##   alloc((cap + GroupSize) * sizeof(CtrlByte))
-  ## )
-  ## result.slots = cast[ptr UncheckedArray[...]](
-  ##   alloc(cap * sizeof(tuple[key: K, value: V]))
-  ## )
-  ##
-  ## for i in 0..<cap:
-  ##   result.ctrl[i] = CtrlEmpty
-  ## for i in cap..<cap+GroupSize:
-  ##   result.ctrl[i] = CtrlSentinel
-  ##
-  ## result.capacity = cap
-  ## result.size = 0
-  ## result.growthLeft = (cap * 7) div 8  # 87.5% load factor
-  ## ```
 
-  let cap = max(16, capacity)
-  result = SwissTable[K, V](
-    ctrl: nil,  # TODO: Allocate
-    slots: nil,
-    capacity: cap,
-    size: 0,
-    growthLeft: (cap * 7) div 8
+  # Round up to next multiple of GroupSize
+  var cap = max(16, capacity)
+  if cap mod GroupSize != 0:
+    cap = ((cap div GroupSize) + 1) * GroupSize
+
+  # Allocate control bytes (extra GroupSize bytes for sentinel/wraparound)
+  result.ctrl = cast[ptr UncheckedArray[CtrlByte]](
+    alloc0((cap + GroupSize) * sizeof(CtrlByte))
   )
+
+  # Allocate slots
+  result.slots = cast[ptr UncheckedArray[tuple[key: K, value: V]]](
+    alloc0(cap * sizeof(tuple[key: K, value: V]))
+  )
+
+  # Initialize all ctrl bytes to Empty
+  for i in 0..<cap:
+    result.ctrl[i] = CtrlEmpty
+
+  # Set sentinel bytes at the end (for wraparound)
+  for i in cap..<cap + GroupSize:
+    result.ctrl[i] = CtrlSentinel
+
+  result.capacity = cap
+  result.size = 0
+  result.growthLeft = (cap * 7) div 8  # 87.5% load factor
 
 proc find*[K, V](t: SwissTable[K, V], key: K): Option[ptr V] =
   ## Find key and return pointer to value, or none if not found.
   ##
-  ## IMPLEMENTATION:
-  ## 1. Compute h1 and h2 from key
-  ## 2. Starting at group = h1 % capacity, probe groups:
-  ##    a. Use SIMD to find all slots matching h2
-  ##    b. For each match, compare actual key
-  ##    c. If key matches, return value pointer
-  ##    d. Use SIMD to check for empty slots
-  ##    e. If any empty slot in group, key doesn't exist
-  ##    f. Continue to next group (quadratic probing)
-  ##
-  ## ```nim
-  ## let h1val = h1(key)
-  ## let h2val = h2(key)
-  ##
-  ## var probeSeq = initProbeSeq(h1val, t.capacity)
-  ##
-  ## while true:
-  ##   let g = t.group(probeSeq.offset)
-  ##
-  ##   for i in match(g, h2val).setBits:
-  ##     let idx = probeSeq.offset + i
-  ##     if t.slots[idx].key == key:
-  ##       return some(addr t.slots[idx].value)
-  ##
-  ##   if matchEmpty(g).uint16 != 0:
-  ##     return none(ptr V)  # Found empty, key doesn't exist
-  ##
-  ##   probeSeq.next()
-  ## ```
+  ## Uses linear probing with SIMD-accelerated group matching.
 
-  result = none(ptr V)
+  if t.ctrl == nil or t.size == 0:
+    return none(ptr V)
+
+  let h1val = h1(key)
+  let h2val = h2(key)
+
+  # Start probing at h1 modulo capacity
+  var offset = (h1val mod t.capacity.uint64).int
+  var probeCount = 0
+
+  # Probe groups until we find the key or an empty slot
+  while probeCount < t.capacity:
+    let g = t.getGroup(offset)
+
+    # Check all slots in group that match h2
+    for i in match(g, h2val).setBits:
+      let idx = offset + i
+      if idx < t.capacity and t.slots[idx].key == key:
+        return some(addr t.slots[idx].value)
+
+    # If we found an empty slot, key doesn't exist
+    if matchEmpty(g).uint16 != 0:
+      return none(ptr V)
+
+    # Linear probing: move to next group
+    offset = (offset + GroupSize) mod t.capacity
+    inc probeCount, GroupSize
+
+  return none(ptr V)
 
 proc `[]`*[K, V](t: SwissTable[K, V], key: K): V =
   ## Get value by key. Raises KeyError if not found.
@@ -281,51 +300,54 @@ proc `[]`*[K, V](t: SwissTable[K, V], key: K): V =
 proc `[]=`*[K, V](t: var SwissTable[K, V], key: K, value: V) =
   ## Insert or update key-value pair.
   ##
-  ## IMPLEMENTATION:
-  ## 1. Check if we need to grow (growthLeft <= 0)
-  ## 2. Find insertion point:
-  ##    a. First check if key exists (update in place)
-  ##    b. Otherwise find empty or deleted slot
-  ## 3. Insert key and value
-  ## 4. Update ctrl byte with h2
-  ## 5. Decrement growthLeft
-  ##
-  ## ```nim
-  ## if t.growthLeft <= 0:
-  ##   t.grow()
-  ##
-  ## let h1val = h1(key)
-  ## let h2val = h2(key)
-  ##
-  ## var probeSeq = initProbeSeq(h1val, t.capacity)
-  ##
-  ## while true:
-  ##   let g = t.group(probeSeq.offset)
-  ##
-  ##   # Check for existing key
-  ##   for i in match(g, h2val).setBits:
-  ##     let idx = probeSeq.offset + i
-  ##     if t.slots[idx].key == key:
-  ##       t.slots[idx].value = value
-  ##       return
-  ##
-  ##   # Find empty/deleted slot for insertion
-  ##   let emptyMask = matchEmptyOrDeleted(g)
-  ##   if emptyMask.uint16 != 0:
-  ##     let i = firstSetBit(emptyMask)
-  ##     let idx = probeSeq.offset + i
-  ##     t.ctrl[idx] = CtrlByte(h2val)
-  ##     t.slots[idx] = (key, value)
-  ##     t.size += 1
-  ##     if t.ctrl[idx].isEmpty:
-  ##       t.growthLeft -= 1
-  ##     return
-  ##
-  ##   probeSeq.next()
-  ## ```
+  ## Uses linear probing to find insertion point.
 
-  # Stub
-  discard
+  if t.ctrl == nil:
+    # Table not initialized, do nothing
+    return
+
+  let h1val = h1(key)
+  let h2val = h2(key)
+
+  # Start probing at h1 modulo capacity
+  var offset = (h1val mod t.capacity.uint64).int
+  var probeCount = 0
+  var insertIdx = -1
+
+  # Probe groups to find key or insertion point
+  while probeCount < t.capacity:
+    let g = t.getGroup(offset)
+
+    # Check if key already exists (update in place)
+    for i in match(g, h2val).setBits:
+      let idx = offset + i
+      if idx < t.capacity and t.slots[idx].key == key:
+        t.slots[idx].value = value
+        return
+
+    # Find first empty or deleted slot for insertion
+    if insertIdx < 0:
+      let emptyMask = matchEmptyOrDeleted(g)
+      if emptyMask.uint16 != 0:
+        let i = firstSetBit(emptyMask)
+        insertIdx = offset + i
+
+    # If we found an empty slot, we can stop probing
+    if matchEmpty(g).uint16 != 0:
+      break
+
+    # Linear probing: move to next group
+    offset = (offset + GroupSize) mod t.capacity
+    inc probeCount, GroupSize
+
+  # Insert new key-value pair
+  if insertIdx >= 0 and insertIdx < t.capacity:
+    let wasEmpty = t.ctrl[insertIdx].isEmpty
+    t.ctrl[insertIdx] = CtrlByte(h2val)
+    t.slots[insertIdx] = (key, value)
+    inc t.size
+    if wasEmpty:
+      dec t.growthLeft
 
 proc contains*[K, V](t: SwissTable[K, V], key: K): bool {.inline.} =
   ## Check if key exists.
@@ -334,14 +356,39 @@ proc contains*[K, V](t: SwissTable[K, V], key: K): bool {.inline.} =
 proc delete*[K, V](t: var SwissTable[K, V], key: K): bool =
   ## Delete key. Returns true if key existed.
   ##
-  ## IMPLEMENTATION:
-  ## 1. Find the key
-  ## 2. If found, set ctrl byte to Deleted (tombstone)
-  ## 3. Optionally clear the slot (for GC)
-  ## 4. Decrement size
-  ## 5. If slot was followed by empty, convert Deleted to Empty
+  ## Sets control byte to Deleted (tombstone) to maintain probe chain.
 
-  result = false
+  if t.ctrl == nil or t.size == 0:
+    return false
+
+  let h1val = h1(key)
+  let h2val = h2(key)
+
+  var offset = (h1val mod t.capacity.uint64).int
+  var probeCount = 0
+
+  # Probe to find the key
+  while probeCount < t.capacity:
+    let g = t.getGroup(offset)
+
+    # Check all slots in group that match h2
+    for i in match(g, h2val).setBits:
+      let idx = offset + i
+      if idx < t.capacity and t.slots[idx].key == key:
+        # Found the key - mark as deleted
+        t.ctrl[idx] = CtrlDeleted
+        dec t.size
+        return true
+
+    # If we found an empty slot, key doesn't exist
+    if matchEmpty(g).uint16 != 0:
+      return false
+
+    # Linear probing: move to next group
+    offset = (offset + GroupSize) mod t.capacity
+    inc probeCount, GroupSize
+
+  return false
 
 proc len*[K, V](t: SwissTable[K, V]): int {.inline.} =
   t.size
@@ -349,11 +396,33 @@ proc len*[K, V](t: SwissTable[K, V]): int {.inline.} =
 proc clear*[K, V](t: var SwissTable[K, V]) =
   ## Remove all entries.
   ##
-  ## IMPLEMENTATION:
-  ## Set all ctrl bytes to Empty, reset size and growthLeft.
+  ## Sets all ctrl bytes to Empty, resets size and growthLeft.
+
+  if t.ctrl != nil:
+    # Clear all control bytes to Empty
+    for i in 0..<t.capacity:
+      t.ctrl[i] = CtrlEmpty
+
+    # Reset sentinel bytes
+    for i in t.capacity..<t.capacity + GroupSize:
+      t.ctrl[i] = CtrlSentinel
 
   t.size = 0
   t.growthLeft = (t.capacity * 7) div 8
+
+proc destroy*[K, V](t: var SwissTable[K, V]) =
+  ## Deallocate all memory used by the table.
+  if t.ctrl != nil:
+    dealloc(t.ctrl)
+    t.ctrl = nil
+
+  if t.slots != nil:
+    dealloc(t.slots)
+    t.slots = nil
+
+  t.size = 0
+  t.capacity = 0
+  t.growthLeft = 0
 
 iterator pairs*[K, V](t: SwissTable[K, V]): (K, V) =
   ## Iterate over all key-value pairs.
