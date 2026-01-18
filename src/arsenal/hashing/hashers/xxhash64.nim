@@ -165,7 +165,50 @@ proc update*(state: var XxHash64State, data: openArray[byte]) =
   ## 3. Keep remainder in buffer
 
   state.totalLen += uint64(data.len)
-  # TODO: Implement incremental update
+
+  var dataPos = 0
+  let dataLen = data.len
+
+  # If we have buffered data, try to fill buffer to 32 bytes
+  if state.bufferSize > 0:
+    let bytesToCopy = min(32 - state.bufferSize, dataLen)
+    copyMem(addr state.buffer[state.bufferSize], unsafeAddr data[0], bytesToCopy)
+    state.bufferSize += bytesToCopy
+    dataPos += bytesToCopy
+
+    # Process buffer if it's full
+    if state.bufferSize == 32:
+      let input1 = cast[ptr uint64](unsafeAddr state.buffer[0])[]
+      let input2 = cast[ptr uint64](unsafeAddr state.buffer[8])[]
+      let input3 = cast[ptr uint64](unsafeAddr state.buffer[16])[]
+      let input4 = cast[ptr uint64](unsafeAddr state.buffer[24])[]
+
+      state.state[0] = round64(state.state[0], input1)
+      state.state[1] = round64(state.state[1], input2)
+      state.state[2] = round64(state.state[2], input3)
+      state.state[3] = round64(state.state[3], input4)
+
+      state.bufferSize = 0
+
+  # Process remaining data in 32-byte chunks
+  while dataPos + 32 <= dataLen:
+    let input1 = cast[ptr uint64](unsafeAddr data[dataPos])[]
+    let input2 = cast[ptr uint64](unsafeAddr data[dataPos + 8])[]
+    let input3 = cast[ptr uint64](unsafeAddr data[dataPos + 16])[]
+    let input4 = cast[ptr uint64](unsafeAddr data[dataPos + 24])[]
+
+    state.state[0] = round64(state.state[0], input1)
+    state.state[1] = round64(state.state[1], input2)
+    state.state[2] = round64(state.state[2], input3)
+    state.state[3] = round64(state.state[3], input4)
+
+    dataPos += 32
+
+  # Buffer remaining bytes (< 32 bytes)
+  if dataPos < dataLen:
+    let remainder = dataLen - dataPos
+    copyMem(addr state.buffer[0], unsafeAddr data[dataPos], remainder)
+    state.bufferSize = remainder
 
 proc update*(state: var XxHash64State, s: string) {.inline.} =
   ## Add string to the hash computation.

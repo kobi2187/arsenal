@@ -450,6 +450,111 @@ proc `$`*(filter: XorFilter16): string =
            ", FP~" & $(filter.falsePositiveRate() * 100.0) & "%)"
 
 # =============================================================================
+# Serialization
+# =============================================================================
+
+proc toBytes*(filter: XorFilter8): seq[byte] =
+  ## Serialize XorFilter8 to bytes
+  ##
+  ## Format: [seed:8][blockLength:4][fingerprints:3*blockLength]
+  result = newSeq[byte](8 + 4 + filter.fingerprints.len)
+
+  # Write seed (8 bytes, little-endian)
+  for i in 0..<8:
+    result[i] = ((filter.seed shr (i * 8)) and 0xFF).byte
+
+  # Write blockLength (4 bytes, little-endian)
+  for i in 0..<4:
+    result[8 + i] = ((filter.blockLength shr (i * 8)) and 0xFF).byte
+
+  # Write fingerprints
+  for i, fp in filter.fingerprints:
+    result[12 + i] = fp
+
+proc fromBytes*(_: typedesc[XorFilter8], data: openArray[byte]): XorFilter8 =
+  ## Deserialize XorFilter8 from bytes
+  if data.len < 12:
+    raise newException(ValueError, "Invalid XorFilter8 data: too short")
+
+  # Read seed (8 bytes, little-endian)
+  var seed: uint64 = 0
+  for i in 0..<8:
+    seed = seed or (data[i].uint64 shl (i * 8))
+
+  # Read blockLength (4 bytes, little-endian)
+  var blockLength: int = 0
+  for i in 0..<4:
+    blockLength = blockLength or (data[8 + i].int shl (i * 8))
+
+  # Verify length
+  let expectedLen = 12 + 3 * blockLength
+  if data.len != expectedLen:
+    raise newException(ValueError, "Invalid XorFilter8 data: expected " & $expectedLen & " bytes, got " & $data.len)
+
+  # Read fingerprints
+  var fingerprints = newSeq[uint8](3 * blockLength)
+  for i in 0..<fingerprints.len:
+    fingerprints[i] = data[12 + i]
+
+  result = XorFilter8(
+    seed: seed,
+    blockLength: blockLength,
+    fingerprints: fingerprints
+  )
+
+proc toBytes*(filter: XorFilter16): seq[byte] =
+  ## Serialize XorFilter16 to bytes
+  ##
+  ## Format: [seed:8][blockLength:4][fingerprints:3*blockLength*2]
+  result = newSeq[byte](8 + 4 + filter.fingerprints.len * 2)
+
+  # Write seed (8 bytes, little-endian)
+  for i in 0..<8:
+    result[i] = ((filter.seed shr (i * 8)) and 0xFF).byte
+
+  # Write blockLength (4 bytes, little-endian)
+  for i in 0..<4:
+    result[8 + i] = ((filter.blockLength shr (i * 8)) and 0xFF).byte
+
+  # Write fingerprints (16-bit each, little-endian)
+  for i, fp in filter.fingerprints:
+    result[12 + i * 2] = (fp and 0xFF).byte
+    result[12 + i * 2 + 1] = ((fp shr 8) and 0xFF).byte
+
+proc fromBytes*(_: typedesc[XorFilter16], data: openArray[byte]): XorFilter16 =
+  ## Deserialize XorFilter16 from bytes
+  if data.len < 12:
+    raise newException(ValueError, "Invalid XorFilter16 data: too short")
+
+  # Read seed (8 bytes, little-endian)
+  var seed: uint64 = 0
+  for i in 0..<8:
+    seed = seed or (data[i].uint64 shl (i * 8))
+
+  # Read blockLength (4 bytes, little-endian)
+  var blockLength: int = 0
+  for i in 0..<4:
+    blockLength = blockLength or (data[8 + i].int shl (i * 8))
+
+  # Verify length
+  let expectedLen = 12 + 3 * blockLength * 2
+  if data.len != expectedLen:
+    raise newException(ValueError, "Invalid XorFilter16 data: expected " & $expectedLen & " bytes, got " & $data.len)
+
+  # Read fingerprints (16-bit each, little-endian)
+  var fingerprints = newSeq[uint16](3 * blockLength)
+  for i in 0..<fingerprints.len:
+    let lo = data[12 + i * 2].uint16
+    let hi = data[12 + i * 2 + 1].uint16
+    fingerprints[i] = lo or (hi shl 8)
+
+  result = XorFilter16(
+    seed: seed,
+    blockLength: blockLength,
+    fingerprints: fingerprints
+  )
+
+# =============================================================================
 # Example Usage
 # =============================================================================
 

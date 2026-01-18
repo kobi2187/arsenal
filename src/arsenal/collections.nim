@@ -227,10 +227,13 @@ iterator items*(s: IntSet): uint32 =
     yield value
 
 # Serialization
-proc toBytes*(s: IntSet): seq[byte] =
+proc toBytes*(s: IntSet): seq[byte] {.inline.} =
   ## Serialize to bytes
-  # Note: RoaringBitmap doesn't have toBytes yet, would need to add
-  raise newException(CatchableError, "Serialization not yet implemented for RoaringBitmap")
+  s.impl.toBytes()
+
+proc fromBytes*(_: typedesc[IntSet], data: openArray[byte]): IntSet =
+  ## Deserialize from bytes
+  IntSet(impl: RoaringBitmap.fromBytes(data))
 
 proc `$`*(s: IntSet): string =
   ## String representation

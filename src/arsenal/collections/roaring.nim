@@ -330,7 +330,11 @@ proc contains*(rb: RoaringBitmap, value: uint32): bool =
   of BitmapContainer:
     rb.containers[idx].containsInBitmap(lowBits)
   of RunContainer:
-    false  # TODO: implement run container search
+    # Search through runs to see if value is in any range
+    for run in rb.containers[idx].runs:
+      if lowBits >= run.start and lowBits <= run.start + run.length:
+        return true
+    false
 
 proc remove*(rb: var RoaringBitmap, value: uint32): bool =
   ## Remove value from bitmap
@@ -588,7 +592,10 @@ iterator items*(rb: RoaringBitmap): uint32 =
               let value = (wordIdx.uint32 shl 6) or bitIdx.uint32
               yield keyBase or value
     of RunContainer:
-      discard  # TODO: implement run container iteration
+      # Iterate through each run and yield all values in the range
+      for run in rb.containers[i].runs:
+        for value in run.start..(run.start + run.length):
+          yield keyBase or value.uint32
 
 # =============================================================================
 # Utilities
@@ -610,6 +617,190 @@ proc memoryUsage*(rb: RoaringBitmap): int =
       result += BitmapContainerSize
     of RunContainer:
       result += container.runs.len * 4
+
+# =============================================================================
+# Serialization
+# =============================================================================
+
+proc toBytes*(rb: RoaringBitmap): seq[byte] =
+  ## Serialize RoaringBitmap to bytes
+  ##
+  ## Format:
+  ## - [numContainers:4]
+  ## - For each container:
+  ##   - [key:2][type:1][size:4][data:variable]
+
+  # Calculate total size first
+  var totalSize = 4  # numContainers
+  for i in 0..<rb.containers.len:
+    totalSize += 2 + 1 + 4  # key + type + size
+    case rb.containers[i].kind
+    of ArrayContainer:
+      totalSize += rb.containers[i].array.len * 2
+    of BitmapContainer:
+      totalSize += BitmapContainerSize
+    of RunContainer:
+      totalSize += rb.containers[i].runs.len * 4
+
+  result = newSeq[byte](totalSize)
+  var offset = 0
+
+  # Write number of containers (4 bytes, little-endian)
+  let numContainers = rb.keys.len
+  for i in 0..<4:
+    result[offset + i] = ((numContainers shr (i * 8)) and 0xFF).byte
+  offset += 4
+
+  # Write each container
+  for i in 0..<rb.keys.len:
+    let key = rb.keys[i]
+    let container = rb.containers[i]
+
+    # Write key (2 bytes, little-endian)
+    result[offset] = (key and 0xFF).byte
+    result[offset + 1] = ((key shr 8) and 0xFF).byte
+    offset += 2
+
+    # Write container type (1 byte)
+    result[offset] = container.kind.byte
+    offset += 1
+
+    # Write container data based on type
+    case container.kind
+    of ArrayContainer:
+      # Write array length (4 bytes)
+      let arrayLen = container.array.len
+      for j in 0..<4:
+        result[offset + j] = ((arrayLen shr (j * 8)) and 0xFF).byte
+      offset += 4
+
+      # Write array elements (each 2 bytes)
+      for value in container.array:
+        result[offset] = (value and 0xFF).byte
+        result[offset + 1] = ((value shr 8) and 0xFF).byte
+        offset += 2
+
+    of BitmapContainer:
+      # Write bitmap size (4 bytes)
+      let bitmapLen = BitmapContainerWords
+      for j in 0..<4:
+        result[offset + j] = ((bitmapLen shr (j * 8)) and 0xFF).byte
+      offset += 4
+
+      # Write bitmap words (each 8 bytes)
+      for word in container.bitmap:
+        for j in 0..<8:
+          result[offset + j] = ((word shr (j * 8)) and 0xFF).byte
+        offset += 8
+
+    of RunContainer:
+      # Write runs length (4 bytes)
+      let runsLen = container.runs.len
+      for j in 0..<4:
+        result[offset + j] = ((runsLen shr (j * 8)) and 0xFF).byte
+      offset += 4
+
+      # Write runs (each 4 bytes: start:2, length:2)
+      for run in container.runs:
+        result[offset] = (run.start and 0xFF).byte
+        result[offset + 1] = ((run.start shr 8) and 0xFF).byte
+        result[offset + 2] = (run.length and 0xFF).byte
+        result[offset + 3] = ((run.length shr 8) and 0xFF).byte
+        offset += 4
+
+proc fromBytes*(_: typedesc[RoaringBitmap], data: openArray[byte]): RoaringBitmap =
+  ## Deserialize RoaringBitmap from bytes
+  if data.len < 4:
+    raise newException(ValueError, "Invalid RoaringBitmap data: too short")
+
+  var offset = 0
+
+  # Read number of containers (4 bytes, little-endian)
+  var numContainers = 0
+  for i in 0..<4:
+    numContainers = numContainers or (data[offset + i].int shl (i * 8))
+  offset += 4
+
+  result.keys = newSeq[uint16](numContainers)
+  result.containers = newSeq[Container](numContainers)
+
+  # Read each container
+  for i in 0..<numContainers:
+    if offset + 2 + 1 + 4 > data.len:
+      raise newException(ValueError, "Invalid RoaringBitmap data: truncated container header")
+
+    # Read key (2 bytes)
+    let key = data[offset].uint16 or (data[offset + 1].uint16 shl 8)
+    result.keys[i] = key
+    offset += 2
+
+    # Read container type (1 byte)
+    let containerType = data[offset].ContainerKind
+    offset += 1
+
+    # Read container data based on type
+    case containerType
+    of ArrayContainer:
+      # Read array length (4 bytes)
+      var arrayLen = 0
+      for j in 0..<4:
+        arrayLen = arrayLen or (data[offset + j].int shl (j * 8))
+      offset += 4
+
+      if offset + arrayLen * 2 > data.len:
+        raise newException(ValueError, "Invalid RoaringBitmap data: truncated array")
+
+      # Read array elements
+      var array = newSeq[uint16](arrayLen)
+      for j in 0..<arrayLen:
+        array[j] = data[offset].uint16 or (data[offset + 1].uint16 shl 8)
+        offset += 2
+
+      result.containers[i] = Container(kind: ArrayContainer, array: array)
+
+    of BitmapContainer:
+      # Read bitmap size (4 bytes)
+      var bitmapLen = 0
+      for j in 0..<4:
+        bitmapLen = bitmapLen or (data[offset + j].int shl (j * 8))
+      offset += 4
+
+      if bitmapLen != BitmapContainerWords:
+        raise newException(ValueError, "Invalid RoaringBitmap data: wrong bitmap size")
+
+      if offset + bitmapLen * 8 > data.len:
+        raise newException(ValueError, "Invalid RoaringBitmap data: truncated bitmap")
+
+      # Read bitmap words
+      var bitmap = newSeq[uint64](bitmapLen)
+      for j in 0..<bitmapLen:
+        var word: uint64 = 0
+        for k in 0..<8:
+          word = word or (data[offset + k].uint64 shl (k * 8))
+        bitmap[j] = word
+        offset += 8
+
+      result.containers[i] = Container(kind: BitmapContainer, bitmap: bitmap)
+
+    of RunContainer:
+      # Read runs length (4 bytes)
+      var runsLen = 0
+      for j in 0..<4:
+        runsLen = runsLen or (data[offset + j].int shl (j * 8))
+      offset += 4
+
+      if offset + runsLen * 4 > data.len:
+        raise newException(ValueError, "Invalid RoaringBitmap data: truncated runs")
+
+      # Read runs
+      var runs = newSeq[tuple[start: uint16, length: uint16]](runsLen)
+      for j in 0..<runsLen:
+        let start = data[offset].uint16 or (data[offset + 1].uint16 shl 8)
+        let length = data[offset + 2].uint16 or (data[offset + 3].uint16 shl 8)
+        runs[j] = (start: start, length: length)
+        offset += 4
+
+      result.containers[i] = Container(kind: RunContainer, runs: runs)
 
 # =============================================================================
 # Example Usage

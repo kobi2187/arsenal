@@ -113,6 +113,9 @@ proc partialSort*[T](arr: var openArray[T], k: int) =
   ##
   ## Faster than full sort when k << n
   ##
+  ## Algorithm: Quickselect to partition, then insertion sort first k
+  ## Complexity: O(n + k log k) average case vs O(n log n) for full sort
+  ##
   ## Example:
   ## ```nim
   ## var arr = [9, 5, 2, 8, 1, 7, 3]
@@ -120,13 +123,59 @@ proc partialSort*[T](arr: var openArray[T], k: int) =
   ## # First 3 elements are smallest: [1, 2, 3, ...]
   ## # Remaining elements are unordered
   ## ```
+  if k <= 0:
+    return
   if k >= arr.len:
     arr.sort()
     return
 
-  # Use quickselect + insertion sort for small k
-  # For now, use pdqsort on full array (TODO: optimize)
-  arr.sort()
+  # Use quickselect to partition so that first k elements are the smallest
+  # This is similar to quicksort partition but we only recurse on the side containing k
+  proc partition[T](arr: var openArray[T], left, right: int): int =
+    # Simple median-of-three pivot selection
+    let mid = (left + right) div 2
+    if arr[mid] < arr[left]:
+      swap(arr[left], arr[mid])
+    if arr[right] < arr[left]:
+      swap(arr[left], arr[right])
+    if arr[mid] < arr[right]:
+      swap(arr[mid], arr[right])
+
+    let pivot = arr[right]
+    var i = left - 1
+
+    for j in left..<right:
+      if arr[j] <= pivot:
+        inc i
+        swap(arr[i], arr[j])
+
+    swap(arr[i + 1], arr[right])
+    return i + 1
+
+  proc quickselect[T](arr: var openArray[T], left, right, k: int) =
+    if left >= right:
+      return
+
+    let pivotIdx = partition(arr, left, right)
+
+    if pivotIdx == k:
+      return  # k-th element in position
+    elif k < pivotIdx:
+      quickselect(arr, left, pivotIdx - 1, k)  # Search left
+    else:
+      quickselect(arr, pivotIdx + 1, right, k)  # Search right
+
+  # Use quickselect to ensure first k elements are the k smallest
+  quickselect(arr, 0, arr.len - 1, k - 1)
+
+  # Now sort just the first k elements with insertion sort (efficient for small k)
+  for i in 1..<k:
+    let key = arr[i]
+    var j = i - 1
+    while j >= 0 and arr[j] > key:
+      arr[j + 1] = arr[j]
+      dec j
+    arr[j + 1] = key
 
 # Checking if sorted
 proc isSorted*[T](arr: openArray[T]): bool =

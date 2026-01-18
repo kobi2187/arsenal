@@ -85,35 +85,64 @@ type
 
 proc init*(_: typedesc[Lz4Compressor]): Lz4Compressor =
   ## Create LZ4 compressor.
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result.stream = LZ4_createStream()
-  ## ```
+  ##
+  ## TECHNICAL NOTES:
+  ## - LZ4_createStream() allocates ~16KB for dictionary
+  ## - Use for streaming compression or multiple blocks
+  ## - For one-shot, can use LZ4_compress_default directly (no stream needed)
+  ## - Stream enables dictionary compression for better ratio
 
-  # Stub
-  result.stream = nil
+  result.stream = LZ4_createStream()
+  if result.stream == nil:
+    raise newException(IOError, "Failed to create LZ4 stream")
 
 proc `=destroy`*(c: var Lz4Compressor) =
   ## Destroy compressor.
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if c.stream != nil:
-  ##   discard LZ4_freeStream(c.stream)
-  ##   c.stream = nil
-  ## ```
+  ##
+  ## TECHNICAL NOTES:
+  ## - LZ4_freeStream returns 0 on success
+  ## - Safe to call with nil pointer
+  ## - Must free to avoid 16KB memory leak per compressor
 
-  # TODO: Free stream
+  if c.stream != nil:
+    discard LZ4_freeStream(c.stream)
+    c.stream = nil
 
 proc compress*(c: var Lz4Compressor, data: openArray[byte]): seq[byte] =
   ## Compress data using LZ4.
-  ## IMPLEMENTATION:
-  ## 1. Calculate max compressed size with LZ4_compressBound
-  ## 2. Allocate output buffer
-  ## 3. Call LZ4_compress_default or streaming version
-  ## 4. Return compressed data
+  ##
+  ## TECHNICAL NOTES:
+  ## - LZ4_compressBound: Returns max size = inputSize + (inputSize/255) + 16
+  ## - Worst case: incompressible data slightly expands
+  ## - LZ4_compress_default uses compression level 1 (fast mode)
+  ## - For higher compression, use LZ4_compress_HC (not bound here)
+  ## - Returns 0 on failure (buffer too small or invalid input)
+  ##
+  ## PERFORMANCE:
+  ## - ~500 MB/s compression on modern CPUs
+  ## - Single-threaded, but can parallelize blocks
+  ## - Zero-copy possible with proper buffer management
 
-  # Stub implementation
-  result = @data  # No compression
+  if data.len == 0:
+    return @[]
+
+  # Calculate maximum compressed size
+  let maxCompressedSize = LZ4_compressBound(data.len.cint)
+  result = newSeq[byte](maxCompressedSize)
+
+  # Compress using C pointers for zero-copy
+  let compressedSize = LZ4_compress_default(
+    cast[cstring](unsafeAddr data[0]),
+    cast[cstring](addr result[0]),
+    data.len.cint,
+    maxCompressedSize
+  )
+
+  if compressedSize <= 0:
+    raise newException(IOError, "LZ4 compression failed")
+
+  # Resize to actual compressed size
+  result.setLen(compressedSize)
 
 proc compress*(data: openArray[byte]): seq[byte] =
   ## One-shot compression.
@@ -131,29 +160,69 @@ type
 
 proc init*(_: typedesc[Lz4Decompressor]): Lz4Decompressor =
   ## Create LZ4 decompressor.
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result.stream = LZ4_createStreamDecode()
-  ## ```
+  ##
+  ## TECHNICAL NOTES:
+  ## - Decompression stream needed for streaming/chunked data
+  ## - For one-shot, can use LZ4_decompress_safe directly
+  ## - Stream maintains dictionary for inter-block dependencies
 
-  # Stub
-  result.stream = nil
+  result.stream = LZ4_createStreamDecode()
+  if result.stream == nil:
+    raise newException(IOError, "Failed to create LZ4 decode stream")
 
 proc `=destroy`*(d: var Lz4Decompressor) =
   ## Destroy decompressor.
-  # TODO: Free stream
+  ##
+  ## TECHNICAL NOTES:
+  ## - Must free to avoid memory leak
+  ## - LZ4 decode stream is smaller than compression stream
+
+  if d.stream != nil:
+    discard LZ4_freeStreamDecode(d.stream)
+    d.stream = nil
 
 proc decompress*(d: var Lz4Decompressor, data: openArray[byte], maxOutputSize: int): seq[byte] =
   ## Decompress LZ4 data.
   ## maxOutputSize: Maximum expected output size for safety.
   ##
-  ## IMPLEMENTATION:
-  ## 1. Allocate output buffer of maxOutputSize
-  ## 2. Call LZ4_decompress_safe or streaming version
-  ## 3. Return decompressed data
+  ## TECHNICAL NOTES:
+  ## - LZ4_decompress_safe: Protected against buffer overruns
+  ## - Returns negative on error (corrupted data, buffer overflow)
+  ## - Returns actual decompressed size on success
+  ## - maxOutputSize prevents memory exhaustion attacks
+  ##
+  ## PERFORMANCE:
+  ## - ~2000 MB/s decompression (fastest in class)
+  ## - ~4x faster than compression
+  ## - Memory bandwidth bound on modern CPUs
+  ##
+  ## SECURITY:
+  ## - Always use LZ4_decompress_safe (not _fast variant)
+  ## - Validates input to prevent buffer overflows
+  ## - Protects against malformed compressed data
 
-  # Stub implementation
-  result = @data  # No decompression
+  if data.len == 0:
+    return @[]
+
+  if maxOutputSize <= 0:
+    raise newException(ValueError, "maxOutputSize must be positive")
+
+  # Allocate output buffer
+  result = newSeq[byte](maxOutputSize)
+
+  # Decompress with bounds checking
+  let decompressedSize = LZ4_decompress_safe(
+    cast[cstring](unsafeAddr data[0]),
+    cast[cstring](addr result[0]),
+    data.len.cint,
+    maxOutputSize.cint
+  )
+
+  if decompressedSize < 0:
+    raise newException(IOError, "LZ4 decompression failed: corrupted data or insufficient buffer")
+
+  # Resize to actual decompressed size
+  result.setLen(decompressedSize)
 
 proc decompress*(data: openArray[byte], maxOutputSize: int): seq[byte] =
   ## One-shot decompression.
