@@ -144,8 +144,11 @@ proc accuracy*(filter: MembershipFilter): float64 {.inline.} =
 # Serialization
 proc toBytes*(filter: MembershipFilter): seq[byte] {.inline.} =
   ## Serialize to bytes
-  # Note: XorFilter8 doesn't have toBytes, would need to add wrapper
-  raise newException(CatchableError, "Serialization not yet implemented for XorFilter8")
+  filter.impl.toBytes()
+
+proc fromBytes*(_: typedesc[MembershipFilter], data: openArray[byte]): MembershipFilter =
+  ## Deserialize from bytes
+  MembershipFilter(impl: XorFilter8.fromBytes(data))
 
 proc `$`*(filter: MembershipFilter): string =
   ## String representation
