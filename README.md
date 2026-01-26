@@ -116,11 +116,13 @@ if cpu.hasAVX2:
 | **Random** | | |
 | `random/rng` | ✅ Complete | PCG32, SplitMix64, CryptoRNG (~1000 M ops/sec) |
 | **Numeric** | | |
-| `numeric/fixed` | 📝 Documented | Fixed-point Q16.16/Q32.32, saturating arithmetic |
+| `numeric/fixed` | ✅ Complete | Fixed-point Q16.16/Q32.32, saturating arithmetic |
 | **SIMD** | | |
-| `simd/intrinsics` | 📝 Documented | SSE2/AVX2 (x86), NEON (ARM) intrinsics |
+| `simd/intrinsics` | ✅ Complete | SSE2/AVX2 (x86), NEON (ARM) intrinsics |
 | **Time** | | |
 | `time/clock` | ✅ Complete | RDTSC, CLOCK_MONOTONIC, high-res timers (~1-20 ns overhead) |
+| **Media Processing** | | |
+| `media/dsp/fft` | ✅ Complete | Radix-2 FFT, RFFT, convolution, correlation (O(N log N)) |
 | **Network** | | |
 | `network/sockets` | 📝 Documented | Raw POSIX sockets, TCP/UDP primitives |
 | **Filesystem** | | |
@@ -159,22 +161,22 @@ if cpu.hasAVX2:
 - [x] M10: Compression (LZ4 bindings complete)
 - [~] M11: Parsing (simdjson, picohttpparser stubs ready)
 
-### Phase D: Primitives & Low-Level ✅ MOSTLY COMPLETE
+### Phase D: Primitives & Low-Level ✅ COMPLETE
 - [x] M17: Embedded HAL (GPIO, UART, MMIO, delays - STM32F4/RP2040)
 - [x] Embedded no-libc runtime (memcpy, memset, string ops, intToStr)
 - [x] Random: PCG32, SplitMix64, CryptoRNG (complete with tests & benchmarks)
 - [x] Time: RDTSC, CLOCK_MONOTONIC, high-res timers (complete with tests & benchmarks)
 - [x] Bits: CLZ, CTZ, popcount, rotate, byte swap (complete with tests & benchmarks)
-- [~] M18: Cryptography (libsodium bindings stubs)
-- [~] Numeric: Fixed-point Q16.16/Q32.32 (stubs)
-- [~] SIMD: SSE2/AVX2/NEON intrinsics (stubs)
-- [~] Network: Raw POSIX sockets (stubs)
-- [~] Filesystem: Raw syscall file I/O (stubs)
+- [x] Numeric: Fixed-point Q16.16/Q32.32 (complete with tests)
+- [x] SIMD: SSE2/AVX2/NEON intrinsics (complete with tests)
+- [~] M18: Cryptography (libsodium bindings stubs - complex, optional)
+- [~] Network: Raw POSIX sockets (documented stubs)
+- [~] Filesystem: Raw syscall file I/O (documented stubs)
 
-### Phase E: Advanced Domains (Deferred)
+### Phase E: Advanced Domains (Partial)
+- [x] M14: Media processing - FFT (Radix-2 Cooley-Tukey, RFFT, convolution)
 - [ ] M12: Linear algebra (SIMD GEMM)
 - [ ] M13: AI/ML primitives
-- [ ] M14: Media processing (FFT, audio/video)
 - [ ] M15: Binary parsing (PE/ELF forensics)
 - [ ] M16: Forensics & recovery
 
@@ -271,6 +273,9 @@ Comprehensive test coverage for all implementations:
 - `test_random.nim` - RNG quality, statistical tests, seeding
 - `test_time.nim` - Timer accuracy, resolution, monotonicity
 - `test_bits.nim` - Bit operations correctness, edge cases
+- `test_fixed.nim` - Fixed-point arithmetic, precision, overflow handling
+- `test_simd.nim` - SIMD intrinsics (SSE2, AVX2, NEON)
+- `test_fft.nim` - FFT correctness, linearity, Parseval's theorem
 
 Run tests:
 ```bash
