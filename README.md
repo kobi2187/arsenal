@@ -123,10 +123,19 @@ if cpu.hasAVX2:
 | `time/clock` | ✅ Complete | RDTSC, CLOCK_MONOTONIC, high-res timers (~1-20 ns overhead) |
 | **Media Processing** | | |
 | `media/dsp/fft` | ✅ Complete | Radix-2 FFT, RFFT, convolution, correlation (O(N log N)) |
+| `media/dsp/mdct` | ✅ Complete | MDCT/IMDCT for MP3/AAC/Vorbis codec support |
+| `media/dsp/window` | ✅ Complete | Windowing functions (Hann, Hamming, Blackman, Kaiser) |
+| `media/dsp/filter` | ✅ Complete | Biquad IIR filters (lowpass, highpass, peaking, shelving) |
+| `media/audio/format` | ✅ Complete | PCM conversions (int16↔float32), interleaving, dithering |
+| `media/audio/resampling` | ✅ Complete | Sample rate conversion (linear, sinc, polyphase) |
+| `media/audio/ringbuffer` | ✅ Complete | Lock-free SPSC ring buffer for streaming |
+| `media/audio/mixing` | ✅ Complete | Audio mixing, panning, crossfading, normalization |
+| **Linear Algebra** | | |
+| `linalg/blas` | ✅ Complete | BLAS Level 1/2/3 (dot, gemv, gemm) pure Nim |
 | **Network** | | |
-| `network/sockets` | 📝 Documented | Raw POSIX sockets, TCP/UDP primitives |
+| `network/sockets` | ✅ Complete | Raw POSIX sockets, TCP/UDP primitives |
 | **Filesystem** | | |
-| `filesystem/rawfs` | 📝 Documented | Direct syscall file I/O, mmap |
+| `filesystem/rawfs` | ✅ Complete | Direct syscall file I/O, mmap, directory ops |
 | **Kernel/Low-Level** | | |
 | `kernel/syscalls` | 📝 Documented | Raw syscalls (no libc) x86_64/ARM64 |
 | **Embedded** | | |
@@ -169,14 +178,21 @@ if cpu.hasAVX2:
 - [x] Bits: CLZ, CTZ, popcount, rotate, byte swap (complete with tests & benchmarks)
 - [x] Numeric: Fixed-point Q16.16/Q32.32 (complete with tests)
 - [x] SIMD: SSE2/AVX2/NEON intrinsics (complete with tests)
+- [x] Network: Raw POSIX sockets, TCP/UDP (complete)
+- [x] Filesystem: Raw syscall file I/O, mmap, directory ops (complete)
 - [~] M18: Cryptography (libsodium bindings stubs - complex, optional)
-- [~] Network: Raw POSIX sockets (documented stubs)
-- [~] Filesystem: Raw syscall file I/O (documented stubs)
 
-### Phase E: Advanced Domains (Partial)
-- [x] M14: Media processing - FFT (Radix-2 Cooley-Tukey, RFFT, convolution)
-- [ ] M12: Linear algebra (SIMD GEMM)
-- [ ] M13: AI/ML primitives
+### Phase E: Advanced Domains (Substantial Progress)
+- [x] M14: Media processing - Complete audio codec foundation
+  - FFT (Radix-2 Cooley-Tukey, RFFT, convolution)
+  - MDCT/IMDCT (for MP3, AAC, Vorbis, Opus decoding)
+  - Audio format conversion (int16↔float32, interleaving, dithering)
+  - Sample rate conversion (44.1k↔48k, linear/sinc/polyphase)
+  - Lock-free ring buffer for streaming
+  - Audio mixing, panning, crossfading
+  - Windowing & filtering complete
+- [x] M12: Linear algebra - BLAS Level 1/2/3 (dot, axpy, gemv, gemm)
+- [ ] M13: AI/ML primitives (inference kernels, quantization)
 - [ ] M15: Binary parsing (PE/ELF forensics)
 - [ ] M16: Forensics & recovery
 
@@ -276,6 +292,7 @@ Comprehensive test coverage for all implementations:
 - `test_fixed.nim` - Fixed-point arithmetic, precision, overflow handling
 - `test_simd.nim` - SIMD intrinsics (SSE2, AVX2, NEON)
 - `test_fft.nim` - FFT correctness, linearity, Parseval's theorem
+- `test_audio_media.nim` - Audio processing (MDCT, format conversion, resampling, ring buffer, mixing)
 
 Run tests:
 ```bash
