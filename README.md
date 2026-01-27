@@ -470,10 +470,26 @@ We're building:
 
 ## Credits
 
-Built on ideas from:
+Arsenal builds on excellent work from the Nim ecosystem:
+
+**Integrated libraries:**
+- **libaco/minicoro** - Fast coroutine context switching
+- **LZ4** - Industry-standard compression
+
+**Recommended companions:**
+- **nimsimd** (https://github.com/guzba/nimsimd) - Comprehensive SIMD (SSE, AVX, FMA, BMI) - More complete than Arsenal's basic wrappers
+- **nimcrypto** (https://github.com/cheatfate/nimcrypto) - Pure Nim cryptography (SHA, BLAKE2, AES) - For when you need crypto
+- **nim-libsodium** (https://github.com/FedericoCeratto/nim-libsodium) - Battle-tested libsodium bindings - Production crypto
+- **nim-intops** (https://github.com/vacp2p/nim-intops) - Overflow-safe integer ops for bignum/crypto
+
+**Algorithms from:**
 - Go's concurrency model (channels, select)
 - Google's Swiss table design (dense hash maps)
-- Various DSP textbooks (audio algorithms)
+- Academic papers (Cooley-Tukey FFT, MDCT, Vyukov's MPMC queue)
 - Nim's philosophy: fast, expressive, compile-time power
 
-Thanks to the Nim community for feedback and contributions. Special thanks to developers proving that pure Nim can match C performance.
+**Note on SIMD:** Arsenal provides basic SSE2/AVX2/NEON wrappers. For production use, consider **nimsimd** which offers comprehensive coverage (SSE through AVX2, FMA, BMI1/2) and is battle-tested in Pixie, Crunchy, and Noisy.
+
+**Note on Crypto:** Arsenal has documented stubs. For actual cryptography, use **nimcrypto** (pure Nim, educational) or **nim-libsodium** (production-grade). Arsenal focuses on systems programming primitives, not cryptography.
+
+Thanks to the Nim community for feedback and contributions. Arsenal stands on the shoulders of these excellent libraries.
