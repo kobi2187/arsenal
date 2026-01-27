@@ -1,33 +1,90 @@
 # Arsenal
 
-A collection of high-performance systems programming libraries written in **pure Nim**. Arsenal aims to provide the fastest possible implementations without requiring C bindings, keeping you in Nim-land for low-level work.
+Systems programming for Nim. Arsenal bridges the gap between Nim's high-level features and low-level systems work, providing **ergonomic, fast abstractions** for concurrency, embedded development, audio processing, and performance-critical code.
 
 ## Philosophy
 
-**Stay in Nim.** Arsenal's goal is to provide performance-competitive pure Nim implementations for systems programming tasks, so you don't have to drop to C or C bindings.
+**Bridge the gap.** Nim is a high-level language, but systems programming requires low-level control. Arsenal provides:
 
-**Where we are:**
-- Hash functions (XXHash64, WyHash) - Pure Nim, competitive with C (15-18 GB/s)
-- Lock-free queues (SPSC) - Pure Nim, fast (10M+ ops/sec)
-- Audio processing (FFT, MDCT, resampling) - Pure Nim, adequate for many uses
-- Embedded HAL - Pure Nim, direct hardware access without libc
-- Bit operations - Pure Nim wrappers over compiler intrinsics
+- **Ergonomic Nim APIs** over low-level primitives (whether pure Nim or C bindings)
+- **Performance-competitive** implementations using the right tool for each job
+- **Idiomatic Nim** interfaces that feel natural and compile to fast code
+- **Everything you need** to do systems programming without leaving Nim
 
-**Where we use C bindings** (and why):
-- Coroutines: libaco/minicoro (context switching requires assembly)
-- LZ4: Industry-standard compression (complex, well-optimized C code)
+**Implementation strategy:**
+- Pure Nim where practical and fast (hash functions, lock-free queues, audio processing)
+- C bindings where they're the right tool (coroutines need assembly, LZ4 is battle-tested)
+- Always wrapped in **ergonomic, type-safe Nim abstractions**
 
-**The goal:** Expand pure Nim implementations and optimize them to match or beat C alternatives, so Nim developers can stay in their language of choice.
+**The key:** You write Nim code. Arsenal handles the low-level details, whether that's pure Nim implementations or efficient C binding wrappers.
 
 ## What Arsenal Provides
 
-- **Concurrency**: Coroutines, channels, lock-free queues, Go-style syntax
-- **Embedded**: No-libc runtime, HAL for STM32F4/RP2040, direct hardware access
-- **Audio**: FFT, MDCT, format conversion, resampling, mixing - all pure Nim
-- **Performance**: Custom allocators, hash functions, Swiss table - all pure Nim
-- **Low-level**: Raw sockets, syscalls, SIMD wrappers, bit operations - all pure Nim
+### Concurrency
+- **Coroutines**: libaco (Linux/Mac), minicoro (Windows) with Go-style `go {}` syntax
+- **Channels**: Unbuffered and buffered, with `select` statement
+- **Lock-free queues**: SPSC (fast, cache-friendly), MPMC (Vyukov's algorithm)
+- **Atomics & Spinlocks**: C++11-style memory ordering, ticket locks, RW locks
 
-**Current status:** Most modules are pure Nim. Performance is competitive for many tasks, with room for optimization (SIMD, algorithmic improvements). Some areas are works in progress.
+### Embedded Systems
+- **No-libc runtime**: memcpy, memset, string operations, intToStr (pure Nim)
+- **HAL**: GPIO, UART, MMIO, delays for STM32F4 and RP2040 (pure Nim)
+- **Direct hardware access** without libc dependency
+
+### Audio Processing
+- **FFT/MDCT**: Radix-2 Cooley-Tukey FFT, IMDCT for MP3/AAC/Vorbis/Opus
+- **Format conversion**: PCM (int8/16/24/32 ↔ float32/64), interleaving, dithering
+- **Resampling**: Linear, sinc, polyphase (44.1k↔48k streaming)
+- **Mixing**: Multi-track, panning, crossfading, normalization
+- **Streaming**: Lock-free ring buffer for real-time audio
+
+### Performance Primitives
+- **Hash functions**: XXHash64 (8-10 GB/s), WyHash (15-18 GB/s) - pure Nim
+- **Swiss table**: Google's dense hash map with SIMD control bytes
+- **Allocators**: Bump allocator, pool allocator
+- **Compression**: LZ4 bindings (~500 MB/s)
+
+### Low-Level
+- **Bit operations**: CLZ, CTZ, popcount, rotate with compiler intrinsics
+- **SIMD**: SSE2, AVX2 (x86), NEON (ARM) wrappers
+- **Fixed-point**: Q16.16, Q32.32 arithmetic
+- **Raw sockets**: POSIX TCP/UDP primitives
+- **Filesystem**: Direct syscall I/O, mmap, directory operations
+
+### Math
+- **BLAS**: Level 1/2/3 (dot, gemv, gemm) pure Nim
+
+**All modules provide idiomatic Nim interfaces**, regardless of underlying implementation.
+
+## Implemented Algorithms & Papers
+
+Arsenal implements proven algorithms from academic research and industry:
+
+**Concurrency:**
+- **Vyukov's MPMC queue** - Lock-free multi-producer/multi-consumer (Dmitry Vyukov, 2011)
+- **Go-style CSP** - Communicating Sequential Processes (Hoare, 1978)
+- **libaco coroutines** - Fast asymmetric coroutine switching
+
+**Data Structures:**
+- **Swiss table** - Google's dense hash map with SIMD control bytes (Abseil, 2018)
+- **Lock-free SPSC** - Cache-friendly single-producer/single-consumer queue
+
+**Hashing:**
+- **XXHash64** - Fast non-cryptographic hash (Yann Collet)
+- **WyHash** - Fastest portable hash function (Wang Yi, 2019)
+
+**Audio/DSP:**
+- **Cooley-Tukey FFT** - Radix-2 decimation-in-time (1965)
+- **MDCT/IMDCT** - Modified DCT for lossy codecs (Princen, Bradley, 1987)
+- **Sinc interpolation** - Windowed sinc resampling (Shannon sampling theorem)
+- **Polyphase filters** - Efficient sample rate conversion
+- **TPDF dithering** - Triangular probability density function dithering
+
+**Embedded:**
+- **Memory-mapped I/O** - Direct hardware register access
+- **No-libc runtime** - Freestanding C replacements
+
+All implementations are documented with references and optimized for Nim.
 
 ## Installation
 
@@ -273,44 +330,49 @@ Legend:
 ## When to Use Arsenal
 
 **Use Arsenal when you want to:**
-- Stay in pure Nim without C bindings
-- Understand and modify low-level implementations
-- Build embedded systems without libc
+- Do systems programming in Nim with ergonomic, fast APIs
+- Access low-level features without leaving Nim's type system
+- Build embedded systems, audio apps, or performance-critical code
+- Use C-level performance with Nim-level ergonomics
 - Prototype systems-level code quickly
-- Have full control over your dependency stack
-- Learn systems programming concepts in Nim
+- Learn systems programming concepts with clear implementations
+
+**Arsenal provides:**
+- The best of both worlds: fast C bindings where needed, pure Nim where practical
+- Consistent, idiomatic Nim interfaces across all modules
+- Performance competitive with manual C code
+- Clear implementations you can understand and modify
 
 **Consider alternatives when:**
-- You need absolute maximum performance right now (though we're working on it)
-- You need battle-tested production code (we're newer, less field-tested)
-- You need features beyond our scope (full video codecs, cryptography, complete BLAS)
+- You need features beyond our scope (full video codecs, complete cryptography)
+- You need battle-tested production code in specific domains (we're newer)
+- You need mature ecosystems with extensive tooling
 
-**The tradeoff:** Arsenal prioritizes staying in Nim and code clarity over cutting-edge optimization. But we're getting faster - benchmarks and PRs welcome.
+## Performance
 
-## Performance: Pure Nim vs C
+Arsenal focuses on **ergonomic Nim APIs with competitive performance**, using the right implementation strategy for each problem:
 
-Arsenal's pure Nim implementations are competitive with C in many areas:
+**Fast (competitive with C):**
+- Hash functions: WyHash 15-18 GB/s, XXHash64 8-10 GB/s (pure Nim, optimized algorithms)
+- Lock-free SPSC queue: 10M+ ops/sec (pure Nim, cache-friendly)
+- Coroutine switches: ~10-20ns (libaco/minicoro with Nim wrapper)
+- LZ4: ~500 MB/s compress, ~2 GB/s decompress (C binding, battle-tested)
+- Bit operations: Compiler intrinsics (pure Nim wrappers)
+- Fixed-point math: Integer speed (pure Nim)
 
-**Pure Nim, competitive with C:**
-- Hash functions: WyHash 15-18 GB/s, XXHash64 8-10 GB/s (close to C implementations)
-- Lock-free SPSC queue: 10M+ ops/sec (cache-friendly design)
-- Bit operations: Uses compiler intrinsics, same speed as C
-- Coroutine switches: ~10-20ns (via libaco, but interface is pure Nim)
-- Fixed-point math: Same speed as integer operations
+**Good for real-time use:**
+- Audio processing (FFT, MDCT, resampling): Pure Nim, adequate quality
+- Format conversion: Fast enough for real-time
+- Swiss table: Good cache locality
+- Embedded HAL: Direct hardware access
 
-**Pure Nim, good for many uses:**
-- Audio resampling: Adequate quality, room for SIMD optimization
-- FFT/MDCT: Correct, works well, could benefit from SIMD
-- Swiss table: Good cache locality, could be more optimized
-- Audio format conversion: Fast enough for real-time
+**Work in progress:**
+- BLAS: Functional, suitable for N < 100 (pure Nim, can optimize)
+- MPMC queue: Works, has contention under heavy load
 
-**Pure Nim, work in progress:**
-- BLAS: Functional but slow, good for learning (N < 100)
-- MPMC queue: Works but has contention issues
+**Philosophy:** We use C bindings when they're clearly superior (libaco, LZ4), and pure Nim when we can match or beat C performance. All code is wrapped in idiomatic Nim APIs.
 
-**The opportunity:** Most of our "adequate" code can be sped up with SIMD, better algorithms, and profiling. Contributions welcome. The goal is matching or beating C while staying in pure Nim.
-
-Always benchmark for your use case. Performance is hardware-dependent and continuously improving.
+Always benchmark for your use case. Performance is hardware-dependent.
 
 ## Documentation
 
@@ -349,28 +411,27 @@ nim c -d:release -r benchmarks/bench_hash_functions.nim
 - STM32F4 (Cortex-M4)
 - RP2040 (Cortex-M0+)
 
-## If You Need C-Level Performance Today
+## Complementary Libraries
 
-Arsenal aims for competitive performance in pure Nim, but we're honest: some C libraries are currently faster. If maximum performance is critical right now:
+Arsenal provides systems-level building blocks. For complete solutions, consider:
 
-**Concurrency:**
-- `std/asyncdispatch`, `chronos` - Mature Nim async/await
-- `malebolgia` - Structured concurrency (pure Nim)
+**Concurrency alternatives:**
+- `std/asyncdispatch`, `chronos` - Async/await for I/O-heavy workloads
+- `malebolgia` - Structured concurrency
 
-**Audio:**
-- libsamplerate (C binding) - Higher quality resampling
-- libsndfile (C binding) - Audio file I/O
-- Arsenal's pure Nim implementations work well for prototyping
+**Audio ecosystem:**
+- libsamplerate - Production-grade resampling (Arsenal: prototyping/learning)
+- libsndfile - Audio file I/O (Arsenal: format conversion)
+- PortAudio - Cross-platform audio I/O (Arsenal: processing primitives)
 
-**Math:**
-- Intel MKL, OpenBLAS (C bindings) - Heavily optimized BLAS
-- Arsenal's pure Nim BLAS is fine for N < 100, learning
+**Math/ML:**
+- Intel MKL, OpenBLAS - Heavily optimized BLAS for large matrices
+- Arsenal's BLAS: Learning tool and small matrices (N < 100)
 
 **Embedded:**
-- Zephyr, FreeRTOS (C) - Full RTOS with many features
-- Arsenal's HAL is minimal but pure Nim
+- Zephyr, FreeRTOS - Full RTOS (Arsenal: minimal HAL for bare metal)
 
-**Our position:** We're building toward pure Nim implementations that match C performance. We're not there yet everywhere, but for many tasks (hashing, queues, audio processing), Arsenal's pure Nim code is fast enough and keeps you in Nim.
+**Arsenal's role:** Provide the building blocks and bridges between Nim and low-level systems. For complete applications, combine with ecosystem libraries.
 
 ## Contributing
 
