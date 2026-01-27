@@ -1,325 +1,379 @@
 # Arsenal
 
-**Universal Low-Level Nim Library for High-Performance Systems Programming**
+A collection of low-level systems programming libraries for Nim. Arsenal provides building blocks for concurrency, embedded development, audio processing, and performance-critical code.
 
-[![CI](https://github.com/yourusername/arsenal/workflows/CI/badge.svg)](https://github.com/yourusername/arsenal/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+## What is this?
 
-Arsenal provides atomic, composable, swappable primitives that achieve **performance parity with hand-tuned C/C++** while maintaining safety and ergonomics.
+Arsenal is a library collection focused on areas where Nim's standard library is minimal or absent. It's written in pure Nim where practical, with C bindings where established libraries exist (LZ4, libaco).
 
-## Philosophy
+**What it provides:**
+- Concurrency primitives (coroutines, channels, lock-free queues)
+- Embedded systems support (no-libc runtime, HAL for STM32F4/RP2040)
+- Audio processing basics (FFT, MDCT, format conversion, resampling)
+- Performance utilities (custom allocators, hash functions, bit operations)
+- Low-level primitives (raw sockets, syscall wrappers, SIMD)
 
-**Both ERGONOMIC and FAST**: Freely using Nim features like compile-time `when` clauses, `asm` emit, and platform-specific implementations selected at compile-time based on detected hardware capabilities.
+**What it's not:**
+- Not a replacement for Nim's standard library (we use and extend it)
+- Not a comprehensive audio/video codec library (provides building blocks)
+- Not production-hardened (works, but limited real-world testing)
+- Not optimized to the max (pure Nim implementations prioritize clarity)
 
-**Leverage stdlib, add missing pieces**: Arsenal re-exports and builds upon Nim's excellent standard library:
-- Uses `std/monotimes` for cross-platform timing, adds RDTSC for cycle-accurate measurement
-- Uses `std/random` (Xoshiro256+), adds PCG32 and CryptoRNG alternatives
-- Uses `std/memfiles` for mmap, adds raw syscall file I/O
-- Uses `std/net` for networking, adds raw socket primitives
-
-Every module follows the **Unsafe + Safe Wrapper** pattern:
-- **Unsafe primitives**: Maximum control, zero-overhead
-- **Safe wrappers**: Bounds-checked, tracked, idiomatic
-
-## Target Domains
-
-| Domain | Use Cases |
-|--------|-----------|
-| **Embedded Systems** | Firmware, IoT, robotics |
-| **Cyber Operations** | Exploit dev, forensics, packet crafting |
-| **High-Performance Computing** | Scientific computing, ML inference |
-| **Systems Programming** | OS kernels, device drivers |
-| **Game Development** | Physics engines, real-time systems |
-| **Blockchain/Crypto** | Smart contracts, zero-knowledge proofs |
-
-## Quick Start
+## Installation
 
 ```bash
-# Install Nim 2.0+
-# Clone repository
-git clone https://github.com/yourusername/arsenal.git
-cd arsenal
+nimble install arsenal
+```
 
-# Install dependencies
-nimble install -y
+Or add to your `.nimble` file:
+```nim
+requires "arsenal"
+```
 
-# Build
+## Usage Examples
+
+### Concurrency
+
+Arsenal provides Go-style concurrency using coroutines and channels:
+
+```nim
+import arsenal/concurrency/[coroutines, channels, dsl]
+
+# Create channels
+var ch = newChannel[int](buffered = true, capacity = 10)
+
+# Spawn coroutines with 'go' syntax
+go:
+  for i in 1..5:
+    ch.send(i)
+  ch.close()
+
+go:
+  while true:
+    let val = ch.recv()
+    if val.isNone:
+      break
+    echo "Received: ", val.get()
+
+# Run scheduler
+run()
+```
+
+**Pros:**
+- Familiar syntax for Go developers
+- Lightweight coroutines (<1KB stack)
+- Works on x86_64 and ARM64
+
+**Cons:**
+- Not as mature as async/await
+- Windows support via minicoro (slower than libaco)
+- Requires manual scheduler management
+
+### Audio Processing
+
+Basic building blocks for audio applications:
+
+```nim
+import arsenal/media/audio/[format, resampling, mixing]
+
+# Convert audio format
+var pcmInt16 = readWavFile("input.wav")  # Your code
+var pcmFloat = newSeq[float32](pcmInt16.len)
+int16ToFloat32(pcmInt16, pcmFloat)
+
+# Resample from 44.1kHz to 48kHz
+var resampler = initResampler(
+  inputRate = 44100,
+  outputRate = 48000,
+  quality = QualityMedium  # Good balance of speed/quality
+)
+let resampled = resampler.process(pcmFloat)
+
+# Mix with another track and apply volume
+var track2 = loadAudioTrack()  # Your code
+var mixed = newSeq[float32](resampled.len)
+mixWeighted(resampled, track2, mixed, 0.7'f32, 0.3'f32)
+applyGainDb(mixed, -3.0)  # Reduce by 3dB
+
+# Write output
+writeWavFile("output.wav", mixed)  # Your code
+```
+
+**Pros:**
+- Pure Nim implementations are easy to modify
+- Covers common audio processing needs
+- Good enough for prototyping and small projects
+
+**Cons:**
+- Resampling quality isn't as good as libsamplerate or SpeexDSP
+- No SIMD optimizations yet (planned)
+- FFT limited to power-of-2 sizes
+- Missing video processing
+
+### Embedded Systems
+
+Write firmware without libc:
+
+```nim
+import arsenal/embedded/[hal, nolibc]
+
+# STM32F4 GPIO blink
+proc main() {.exportc: "main".} =
+  # Configure GPIO
+  let ledPin = PA5  # Arduino-compatible pin
+  gpioSetMode(GPIOA, ledPin, GPIO_MODE_OUTPUT)
+
+  # Blink loop
+  while true:
+    gpioWrite(GPIOA, ledPin, HIGH)
+    delayMs(500)
+    gpioWrite(GPIOA, ledPin, LOW)
+    delayMs(500)
+
+# Compile with:
+# nim c -d:release -d:danger --os:any --cpu:arm \
+#   --gcc.exe:arm-none-eabi-gcc --gcc.linkerexe:arm-none-eabi-gcc \
+#   blink.nim
+```
+
+**Pros:**
+- No libc dependency (smaller binaries)
+- Works on STM32F4 and RP2040
+- Direct hardware access
+
+**Cons:**
+- Limited to two MCU families
+- No RTOS features yet
+- Requires cross-compilation knowledge
+- Documentation assumes you know embedded development
+
+### Lock-Free Data Structures
+
+SPSC queue for producer-consumer patterns:
+
+```nim
+import arsenal/concurrency/queues
+
+# Single Producer, Single Consumer queue
+var queue = SpscQueue[int].init(capacity = 1024)
+
+# Producer thread
+proc producer() =
+  for i in 1..1000:
+    while not queue.push(i):
+      cpuRelax()  # Spin until space available
+
+# Consumer thread
+proc consumer() =
+  while true:
+    let val = queue.pop()
+    if val.isSome:
+      process(val.get())
+    else:
+      break
+```
+
+**Pros:**
+- Lock-free (no mutex overhead)
+- Fast for single producer/consumer (10M+ ops/sec)
+- Simple API
+
+**Cons:**
+- Only SPSC (single producer/single consumer)
+- MPMC queue is slower than expected
+- Fixed size (can't grow)
+
+### Hash Functions and Tables
+
+Fast hashing for checksums and hash tables:
+
+```nim
+import arsenal/hashing/hashers/wyhash
+import arsenal/datastructures/swiss_table
+
+# Fast file checksum
+proc checksumFile(path: string): uint64 =
+  var hasher = initWyHash()
+  var file = open(path)
+  defer: file.close()
+
+  var buffer: array[4096, byte]
+  while true:
+    let bytesRead = file.readBytes(buffer, 0, buffer.len)
+    if bytesRead == 0:
+      break
+    hasher.update(buffer.toOpenArray(0, bytesRead - 1))
+
+  result = hasher.finish()
+
+# Swiss table (Google's dense hash table design)
+var cache = SwissTable[string, JsonNode].init()
+cache.insert("user:123", parseJson("""{"name": "Alice"}"""))
+
+let user = cache.lookup("user:123")
+if user.isSome:
+  echo user.get()
+```
+
+**Pros:**
+- WyHash is very fast (15-18 GB/s)
+- Swiss table has good cache locality
+- Incremental hashing for large data
+
+**Cons:**
+- Swiss table not as optimized as it could be
+- No SIMD acceleration yet
+- Hash functions not cryptographically secure
+
+## Module Status
+
+| Module | Status | Notes |
+|--------|--------|-------|
+| **Concurrency** |
+| Coroutines, channels | ✅ Works | libaco (Linux/Mac), minicoro (Windows) |
+| Lock-free SPSC queue | ✅ Works | Good performance |
+| Lock-free MPMC queue | ⚠️ Slower than expected | Vyukov algorithm, room for improvement |
+| **Embedded** |
+| No-libc runtime | ✅ Works | memcpy, memset, basic string ops |
+| HAL (STM32F4, RP2040) | ✅ Works | GPIO, UART, basic peripherals |
+| **Audio** |
+| FFT/MDCT | ✅ Works | Power-of-2 sizes only |
+| Format conversion | ✅ Works | Common PCM formats |
+| Resampling | ⚠️ Adequate | Quality ok, not best-in-class |
+| Ring buffer | ✅ Works | Lock-free SPSC |
+| **Performance** |
+| Hash functions | ✅ Works | XXHash64, WyHash |
+| Swiss table | ⚠️ Ok | Functional, not fully optimized |
+| Custom allocators | ✅ Works | Bump, Pool |
+| **Low-Level** |
+| Bit operations | ✅ Works | CLZ, CTZ, popcount with intrinsics |
+| SIMD wrappers | ✅ Works | SSE2, AVX2, NEON basics |
+| Fixed-point math | ✅ Works | Q16.16, Q32.32 |
+| Raw sockets | ✅ Works | POSIX wrappers |
+| **Math** |
+| BLAS basics | ⚠️ Slow | Pure Nim, use for learning only |
+
+Legend:
+- ✅ Works: Tested and functional
+- ⚠️ Notes: Works but has caveats
+- 📝 Stub: Interface defined, implementation incomplete
+
+## When to Use Arsenal
+
+**Good for:**
+- Learning systems programming in Nim
+- Prototyping audio applications
+- Embedded firmware where libc is unavailable
+- Projects needing Go-style concurrency
+- When you want to understand implementations (pure Nim code)
+
+**Not good for:**
+- Production audio/video apps (use established libraries)
+- High-performance linear algebra (use BLAS/LAPACK bindings)
+- Cryptography (use libsodium or OpenSSL)
+- When you need maximum performance (our code prioritizes clarity)
+
+## Performance Notes
+
+**Where we're fast:**
+- Hash functions (near C speed due to simple algorithms)
+- Lock-free SPSC queue (cache-friendly)
+- Bit operations (compiler intrinsics)
+- Coroutine switches (~10-20ns)
+
+**Where we're adequate:**
+- Audio resampling (usable, not exceptional)
+- Swiss table lookups (good, not great)
+- Fixed-point math (close to integer speed)
+
+**Where we're slow:**
+- BLAS (pure Nim, use for N < 100 only)
+- MPMC queue (contention issues)
+- FFT (no SIMD, plan-once overhead)
+
+Always benchmark for your use case. Performance claims are approximate and hardware-dependent.
+
+## Documentation
+
+Each module has inline documentation. View with `nim doc`:
+
+```bash
+nim doc src/arsenal/concurrency/channels.nim
+```
+
+Examples in `examples/` demonstrate practical usage. Tests in `tests/` show detailed API usage.
+
+## Building
+
+```bash
+# Development build
 nimble build
+
+# Release build (faster)
+nim c -d:release src/arsenal.nim
 
 # Run tests
 nimble test
 
 # Run benchmarks
-nimble bench
-```
-
-## Basic Usage
-
-```nim
-import arsenal
-
-# High-performance hash table (SIMD-accelerated)
-var table = SwissTable[string, int].init()
-table["hello"] = 42
-
-# Go-style concurrency
-go:
-  echo "Running in coroutine!"
-
-# Lock-free queues
-var queue = SpscQueue[int].init(1024)
-queue.push(42)
-echo queue.pop()  # Some(42)
-
-# Optimization strategies
-setStrategy(Throughput)  # Optimize for max ops/sec
-withStrategy(Latency):
-  criticalOperation()
-
-# CPU feature detection
-let cpu = getCpuFeatures()
-if cpu.hasAVX2:
-  echo "Using AVX2 optimizations!"
-```
-
-## Module Overview
-
-| Module | Status | Description |
-|--------|--------|-------------|
-| **Platform** | | |
-| `platform/config` | ✅ Complete | CPU feature detection (CPUID, NEON) |
-| `platform/strategies` | ✅ Complete | Optimization strategy selection |
-| **Concurrency** | | |
-| `concurrency/atomics` | ✅ Complete | C++11-style atomics with memory ordering |
-| `concurrency/sync/spinlock` | ✅ Complete | Ticket lock, RW spinlock |
-| `concurrency/queues` | ✅ Complete | SPSC, MPMC lock-free queues |
-| `concurrency/coroutines` | ✅ Complete | libaco/minicoro backends |
-| `concurrency/channels` | ✅ Complete | Go-style channels & select |
-| `concurrency/dsl` | ✅ Complete | `go {}` macro and scheduler |
-| **I/O** | | |
-| `io/eventloop` | ✅ Complete | epoll/kqueue/IOCP backends |
-| **Memory** | | |
-| `memory/allocator` | ✅ Complete | Bump, Pool, System allocators |
-| **Hashing** | | |
-| `hashing/hashers/xxhash64` | ✅ Complete | XXHash64 (one-shot & incremental, 8-10 GB/s) |
-| `hashing/hashers/wyhash` | ✅ Complete | WyHash (one-shot & incremental, 15-18 GB/s) |
-| **Data Structures** | | |
-| `datastructures/swiss_table` | ✅ Complete | SIMD-ready hash table with control bytes |
-| **Compression** | | |
-| `compression/lz4` | ✅ Complete | LZ4 compression bindings (~500 MB/s compress) |
-| `compression/zstd` | 📝 Documented | Zstandard compression bindings |
-| **Parsing** | | |
-| `parsing/simdjson` | 📝 Documented | SIMD JSON parser (2-4 GB/s) |
-| `parsing/picohttpparser` | 📝 Documented | Zero-copy HTTP parser |
-| **Cryptography** | | |
-| `crypto/primitives` | 📝 Documented | ChaCha20, Ed25519, SHA-256, BLAKE2b (libsodium) |
-| **Random** | | |
-| `random/rng` | ✅ Complete | PCG32, SplitMix64, CryptoRNG (~1000 M ops/sec) |
-| **Numeric** | | |
-| `numeric/fixed` | ✅ Complete | Fixed-point Q16.16/Q32.32, saturating arithmetic |
-| **SIMD** | | |
-| `simd/intrinsics` | ✅ Complete | SSE2/AVX2 (x86), NEON (ARM) intrinsics |
-| **Time** | | |
-| `time/clock` | ✅ Complete | RDTSC, CLOCK_MONOTONIC, high-res timers (~1-20 ns overhead) |
-| **Media Processing** | | |
-| `media/dsp/fft` | ✅ Complete | Radix-2 FFT, RFFT, convolution, correlation (O(N log N)) |
-| `media/dsp/mdct` | ✅ Complete | MDCT/IMDCT for MP3/AAC/Vorbis codec support |
-| `media/dsp/window` | ✅ Complete | Windowing functions (Hann, Hamming, Blackman, Kaiser) |
-| `media/dsp/filter` | ✅ Complete | Biquad IIR filters (lowpass, highpass, peaking, shelving) |
-| `media/audio/format` | ✅ Complete | PCM conversions (int16↔float32), interleaving, dithering |
-| `media/audio/resampling` | ✅ Complete | Sample rate conversion (linear, sinc, polyphase) |
-| `media/audio/ringbuffer` | ✅ Complete | Lock-free SPSC ring buffer for streaming |
-| `media/audio/mixing` | ✅ Complete | Audio mixing, panning, crossfading, normalization |
-| **Linear Algebra** | | |
-| `linalg/blas` | ✅ Complete | BLAS Level 1/2/3 (dot, gemv, gemm) pure Nim |
-| **Network** | | |
-| `network/sockets` | ✅ Complete | Raw POSIX sockets, TCP/UDP primitives |
-| **Filesystem** | | |
-| `filesystem/rawfs` | ✅ Complete | Direct syscall file I/O, mmap, directory ops |
-| **Kernel/Low-Level** | | |
-| `kernel/syscalls` | 📝 Documented | Raw syscalls (no libc) x86_64/ARM64 |
-| **Embedded** | | |
-| `embedded/nolibc` | ✅ Complete | No-libc runtime (memcpy, memset, intToStr) |
-| `embedded/hal` | ✅ Complete | Hardware abstraction (GPIO, UART, delays, MMIO) |
-| `embedded/rtos` | 📝 Documented | Minimal RTOS (scheduler, semaphores, queues) |
-| **Utilities** | | |
-| `bits/bitops` | ✅ Complete | CLZ, CTZ, popcount, rotate (~1-5 ns per op) |
-
-**Legend:** ✅ = Complete & Tested | 📝 = Documented stubs ready for implementation
-
-## Current Status
-
-**Production-ready modules with comprehensive tests, benchmarks, and examples.**
-
-### Phase A: Foundation ✅ COMPLETE
-- [x] M0: Project setup
-- [x] M1: Core infrastructure (CPU detection, strategies)
-
-### Phase B: Concurrency ✅ COMPLETE
-- [x] M2: Coroutines (libaco/minicoro bindings)
-- [x] M3: Lock-free primitives (atomics, spinlocks, queues)
-- [x] M4: Channel system (unbuffered, buffered, select)
-- [x] M5: I/O integration (std/selectors: epoll/kqueue/IOCP)
-- [x] M6: Go-style DSL (`go` macro, unified scheduler)
-- [x] M7: Echo server (integration test)
-
-### Phase C: Performance ✅ COMPLETE
-- [x] M8: Allocators (bump, pool implemented & tested)
-- [x] M9: Hashing (XXHash64, WyHash - one-shot & incremental)
-- [x] Data Structures (Swiss Table with full CRUD operations)
-- [x] M10: Compression (LZ4 bindings complete)
-- [~] M11: Parsing (simdjson, picohttpparser stubs ready)
-
-### Phase D: Primitives & Low-Level ✅ COMPLETE
-- [x] M17: Embedded HAL (GPIO, UART, MMIO, delays - STM32F4/RP2040)
-- [x] Embedded no-libc runtime (memcpy, memset, string ops, intToStr)
-- [x] Random: PCG32, SplitMix64, CryptoRNG (complete with tests & benchmarks)
-- [x] Time: RDTSC, CLOCK_MONOTONIC, high-res timers (complete with tests & benchmarks)
-- [x] Bits: CLZ, CTZ, popcount, rotate, byte swap (complete with tests & benchmarks)
-- [x] Numeric: Fixed-point Q16.16/Q32.32 (complete with tests)
-- [x] SIMD: SSE2/AVX2/NEON intrinsics (complete with tests)
-- [x] Network: Raw POSIX sockets, TCP/UDP (complete)
-- [x] Filesystem: Raw syscall file I/O, mmap, directory ops (complete)
-- [~] M18: Cryptography (libsodium bindings stubs - complex, optional)
-
-### Phase E: Advanced Domains (Substantial Progress)
-- [x] M14: Media processing - Complete audio codec foundation
-  - FFT (Radix-2 Cooley-Tukey, RFFT, convolution)
-  - MDCT/IMDCT (for MP3, AAC, Vorbis, Opus decoding)
-  - Audio format conversion (int16↔float32, interleaving, dithering)
-  - Sample rate conversion (44.1k↔48k, linear/sinc/polyphase)
-  - Lock-free ring buffer for streaming
-  - Audio mixing, panning, crossfading
-  - Windowing & filtering complete
-- [x] M12: Linear algebra - BLAS Level 1/2/3 (dot, axpy, gemv, gemm)
-- [ ] M13: AI/ML primitives (inference kernels, quantization)
-- [ ] M15: Binary parsing (PE/ELF forensics)
-- [ ] M16: Forensics & recovery
-
-### Phase F: Release
-- [ ] M19: 1.0 release
-
-See [ROADMAP_PROGRESS.md](ROADMAP_PROGRESS.md) for detailed progress tracking.
-
-## Performance Targets
-
-| Component | Target Metric |
-|-----------|---------------|
-| **Concurrency** | |
-| Coroutine switch | <20ns |
-| SPSC queue | >10M ops/sec |
-| **Memory** | |
-| Memory allocators | 10-50% faster than malloc |
-| **Hashing** | |
-| Hash functions (xxHash64) | >10 GB/s |
-| Swiss tables | 2x faster than std/tables |
-| **Compression** | |
-| LZ4 compression | ~500 MB/s compress, ~2 GB/s decompress |
-| Zstd compression | 100-700 MB/s (level-dependent) |
-| **Parsing** | |
-| simdjson parsing | 2-4 GB/s |
-| HTTP parsing (picohttpparser) | ~1 GB/s headers |
-| **Cryptography** | |
-| ChaCha20 encryption | ~1 GB/s |
-| Ed25519 sign/verify | ~50K ops/sec |
-| BLAKE2b hash | ~1 GB/s |
-| **Random** | |
-| PCG32 RNG | ~1 ns/number |
-| **Numeric** | |
-| Fixed-point Q16.16 add/sub | ~0.3 ns (same as int) |
-| Fixed-point Q16.16 mul/div | ~1-2 ns |
-| **SIMD** | |
-| SSE2 vector add (4x float32) | 4x speedup vs scalar |
-| AVX2 vector add (8x float32) | 8x speedup vs scalar |
-| **Time** | |
-| RDTSC resolution | ~0.3 ns (1 CPU cycle) |
-| CLOCK_MONOTONIC | ~20 ns (syscall overhead) |
-| **I/O** | |
-| Raw syscall overhead | ~50 ns |
-| Memory-mapped file access | ~10 ns |
-
-## Examples & Documentation
-
-Arsenal includes comprehensive examples, benchmarks, and tests for all implemented modules.
-
-### Examples by Domain
-
-**Embedded Systems** (`examples/`)
-- `embedded_blinky.nim` - LED blink with GPIO control (STM32F4/RP2040)
-  - Basic GPIO operations, multiple blink patterns
-  - Complete compilation guide for bare-metal
-  - Hardware setup and debugging tips
-- `embedded_uart_echo.nim` - Serial echo server with command shell
-  - UART communication, command processing
-  - Helper functions for printing integers/hex
-  - Terminal configuration guide
-
-**High-Performance Computing** (`examples/`)
-- `hash_file_checksum.nim` - File integrity verification
-  - Incremental hashing for large files
-  - Progress reporting, benchmarking mode
-  - XXHash64 and WyHash comparison
-- `swiss_table_cache.nim` - LRU cache implementation
-  - Web API caching, computation memoization
-  - Database query caching, TTL patterns
-  - Performance statistics
-- `monte_carlo_pi.nim` - Monte Carlo π estimation
-  - PCG32 parallel streams, high-res timing
-  - Bit operations for optimization
-  - Statistical analysis and convergence
-
-### Benchmarks (`benchmarks/`)
-
-All benchmarks include performance metrics and expected results:
-- `bench_embedded_hal.nim` - GPIO, UART, timing operations (ops/sec, ns/op)
-- `bench_nolibc.nim` - Memory operations throughput (MB/s)
-- `bench_hash_functions.nim` - Hash throughput (GB/s, incremental vs one-shot)
-- `bench_swiss_table.nim` - Hash table performance (lookups/sec, memory overhead)
-- `bench_random.nim` - RNG throughput (PCG32, SplitMix64, Xoshiro256+, CryptoRNG)
-- `bench_time.nim` - Timing overhead (RDTSC, monotonic clock, high-res timer)
-- `bench_bits.nim` - Bit operation performance (CLZ, CTZ, popcount, rotate)
-
-### Tests (`tests/`)
-
-Comprehensive test coverage for all implementations:
-- `test_embedded_hal.nim` - MMIO, GPIO, UART, delays, bit manipulation
-- `test_nolibc.nim` - Memory operations, string functions, intToStr
-- `test_hash_functions.nim` - XXHash64, WyHash (correctness, consistency)
-- `test_swiss_table.nim` - CRUD operations, iteration, stress tests
-- `test_random.nim` - RNG quality, statistical tests, seeding
-- `test_time.nim` - Timer accuracy, resolution, monotonicity
-- `test_bits.nim` - Bit operations correctness, edge cases
-- `test_fixed.nim` - Fixed-point arithmetic, precision, overflow handling
-- `test_simd.nim` - SIMD intrinsics (SSE2, AVX2, NEON)
-- `test_fft.nim` - FFT correctness, linearity, Parseval's theorem
-- `test_audio_media.nim` - Audio processing (MDCT, format conversion, resampling, ring buffer, mixing)
-
-Run tests:
-```bash
-nim c -r tests/test_swiss_table.nim
-nim c -r tests/test_hash_functions.nim
-```
-
-Run benchmarks:
-```bash
 nim c -d:release -r benchmarks/bench_hash_functions.nim
-nim c -d:release -r benchmarks/bench_swiss_table.nim
 ```
 
-See [`examples/README.md`](examples/README.md) for detailed usage instructions per domain.
+## Platform Support
+
+**Tested:**
+- Linux (x86_64, ARM64)
+- macOS (x86_64, ARM64)
+- Windows (x86_64) - partial (coroutines via minicoro)
+
+**Embedded:**
+- STM32F4 (Cortex-M4)
+- RP2040 (Cortex-M0+)
+
+## Alternatives
+
+Before using Arsenal, consider these alternatives:
+
+**For concurrency:**
+- `std/asyncdispatch`, `chronos` - Mature async/await (probably better)
+- `malebolgia` - Structured concurrency
+
+**For audio:**
+- libsamplerate - Better resampling
+- libsndfile - Audio I/O
+- PortAudio - Cross-platform audio
+
+**For performance:**
+- Intel MKL, OpenBLAS - Fast BLAS
+- Google's Abseil - C++ containers
+- mimalloc - Fast allocator
+
+**For embedded:**
+- Zephyr - Full RTOS
+- FreeRTOS - Industry standard
+
+Arsenal is useful when you want pure Nim code, need to understand implementations, or have specific requirements not met by existing libraries.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+Contributions welcome. See `CONTRIBUTING.md` for guidelines.
+
+Focus areas:
+- SIMD optimizations for audio/math
+- More embedded MCU support
+- Better MPMC queue implementation
+- Documentation and examples
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file.
+MIT License - see `LICENSE` file.
 
-## Acknowledgments
+## Credits
 
-Inspired by:
+Built on ideas from:
 - Go's concurrency model
-- Rust's ownership system
-- C++'s performance primitives
-- Nim's compile-time power
+- Google's Swiss table design
+- libaco coroutine library
+- Various DSP textbooks
+
+Thanks to the Nim community for feedback and contributions.
