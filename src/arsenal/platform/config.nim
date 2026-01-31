@@ -142,15 +142,72 @@ proc detectCpuFeatures*(): CpuFeatures =
   )
 
   when IsX64:
-    # TODO: Implement CPUID detection
-    # For now, assume modern baseline
-    result.hasSSE2 = true
-    result.hasRDTSC = true
+    # Use CPUID to detect features
+    var eax, ebx, ecx, edx: uint32
+
+    # First, get vendor string (CPUID 0)
+    {.emit: """
+      __asm__ __volatile__ (
+        "cpuid"
+        : "=a"(`eax`), "=b"(`ebx`), "=c"(`ecx`), "=d"(`edx`)
+        : "a"(0)
+      );
+    """.}
+
+    # Detect vendor from CPUID 0 output
+    if ebx == 0x756e6547 and edx == 0x49656e69 and ecx == 0x6c65746e:  # "GenuineIntel"
+      result.vendor = cvIntel
+    elif ebx == 0x68747541 and edx == 0x69444d41 and ecx == 0x444d4163:  # "AuthenticAMD"
+      result.vendor = cvAMD
+
+    # Get basic features (CPUID 1)
+    {.emit: """
+      __asm__ __volatile__ (
+        "cpuid"
+        : "=a"(`eax`), "=b"(`ebx`), "=c"(`ecx`), "=d"(`edx`)
+        : "a"(1)
+      );
+    """.}
+
+    # EDX bits for standard features
+    result.hasRDTSC = (edx and (1'u32 shl 4)) != 0
+    result.hasSSE = (edx and (1'u32 shl 25)) != 0
+    result.hasSSE2 = (edx and (1'u32 shl 26)) != 0
+
+    # ECX bits for additional features
+    result.hasSSE3 = (ecx and (1'u32 shl 0)) != 0
+    result.hasSSSE3 = (ecx and (1'u32 shl 9)) != 0
+    result.hasSSE41 = (ecx and (1'u32 shl 19)) != 0
+    result.hasSSE42 = (ecx and (1'u32 shl 20)) != 0
+    result.hasAESNI = (ecx and (1'u32 shl 25)) != 0
+    result.hasCLMUL = (ecx and (1'u32 shl 1)) != 0
+    result.hasFMA = (ecx and (1'u32 shl 12)) != 0
+    result.hasAVX = (ecx and (1'u32 shl 28)) != 0
+    result.hasRDRAND = (ecx and (1'u32 shl 30)) != 0
+
+    # Get extended features (CPUID 7, ECX=0)
+    {.emit: """
+      __asm__ __volatile__ (
+        "cpuid"
+        : "=a"(`eax`), "=b"(`ebx`), "=c"(`ecx`), "=d"(`edx`)
+        : "a"(7), "c"(0)
+      );
+    """.}
+
+    # EBX bits for extended features
+    result.hasBMI1 = (ebx and (1'u32 shl 3)) != 0
+    result.hasAVX2 = (ebx and (1'u32 shl 5)) != 0
+    result.hasBMI2 = (ebx and (1'u32 shl 8)) != 0
+    result.hasRDSEED = (ebx and (1'u32 shl 18)) != 0
+    result.hasAVX512F = (ebx and (1'u32 shl 16)) != 0
+    result.hasAVX512BW = (ebx and (1'u32 shl 30)) != 0
+    result.hasAVX512VL = (ebx and (1'u32 shl 31)) != 0
+
+    # ECX bits for extended features
+    result.hasRDTSCP = (edx and (1'u32 shl 27)) != 0
+
   elif IsARM64:
     result.hasNEON = true  # Always available on ARM64
-
-  # Stub - needs platform-specific implementation
-  discard
 
 proc getPlatformInfo*(): PlatformInfo =
   ## Returns static platform information.

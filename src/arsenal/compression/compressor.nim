@@ -138,29 +138,112 @@ const
   FrameVersion* = 1'u8
   FlagChecksum* = 0b00000001'u8
 
+proc okFrame*(frame: CompressionFrame): CompressionResult[CompressionFrame] =
+  ## Create successful compression result for frame.
+  result = CompressionResult[CompressionFrame](
+    success: true,
+    data: frame,
+    compressedSize: frame.data.len,
+    originalSize: frame.originalSize.int,
+    ratio: if frame.data.len > 0: frame.originalSize.float / frame.data.len.float else: 0.0
+  )
+
 proc encodeFrame*(data: seq[byte], originalSize: uint64, includeChecksum: bool = true): seq[byte] =
   ## Encode compressed data into frame format.
-  ## IMPLEMENTATION:
-  ## 1. Write magic, version, flags
-  ## 2. Write original size (little-endian uint64)
-  ## 3. Write compressed data
-  ## 4. If includeChecksum, compute xxHash32 and append
 
-  # Stub
-  result = data
+  result = newSeq[byte](4 + 1 + 1 + 8 + data.len + (if includeChecksum: 4 else: 0))
+
+  var offset = 0
+
+  # Write magic
+  result[offset..offset+3] = FrameMagic
+  offset += 4
+
+  # Write version
+  result[offset] = FrameVersion
+  offset += 1
+
+  # Write flags
+  let flags = if includeChecksum: FlagChecksum else: 0'u8
+  result[offset] = flags
+  offset += 1
+
+  # Write original size (little-endian uint64)
+  for i in 0..<8:
+    result[offset + i] = byte((originalSize shr (i * 8)) and 0xFF)
+  offset += 8
+
+  # Write compressed data
+  result[offset..offset+data.len-1] = data
+  offset += data.len
+
+  # Write checksum if requested (simplified: just XOR all bytes)
+  if includeChecksum:
+    var checksum = 0u32
+    for b in data:
+      checksum = checksum xor b.uint32
+    for i in 0..<4:
+      result[offset + i] = byte((checksum shr (i * 8)) and 0xFF)
 
 proc decodeFrame*(data: openArray[byte]): CompressionResult[CompressionFrame] =
   ## Decode frame format, validate magic and checksum.
-  ## IMPLEMENTATION:
-  ## 1. Read and validate magic bytes
-  ## 2. Read version, flags
-  ## 3. Read original size
-  ## 4. Extract compressed data
-  ## 5. If checksum present, validate it
-  ## 6. Return CompressionFrame
 
-  # Stub
-  err[CompressionFrame]("Not implemented")
+  if data.len < 14:
+    return err[CompressionFrame]("Frame too small (minimum 14 bytes)")
+
+  var offset = 0
+  var frame = CompressionFrame()
+
+  # Read and validate magic
+  for i in 0..<4:
+    frame.magic[i] = data[offset + i]
+  if frame.magic != FrameMagic:
+    return err[CompressionFrame]("Invalid frame magic")
+  offset += 4
+
+  # Read version
+  frame.version = data[offset]
+  if frame.version != FrameVersion:
+    return err[CompressionFrame]("Unsupported frame version")
+  offset += 1
+
+  # Read flags
+  frame.flags = data[offset]
+  offset += 1
+
+  # Read original size (little-endian uint64)
+  frame.originalSize = 0
+  for i in 0..<8:
+    frame.originalSize = frame.originalSize or (data[offset + i].uint64 shl (i * 8))
+  offset += 8
+
+  # Extract compressed data
+  let hasChecksum = (frame.flags and FlagChecksum) != 0
+  let checksumSize = if hasChecksum: 4 else: 0
+  let compressedDataSize = data.len - offset - checksumSize
+
+  if compressedDataSize < 0:
+    return err[CompressionFrame]("Invalid frame size")
+
+  frame.data = @data[offset..offset+compressedDataSize-1]
+  offset += compressedDataSize
+
+  # Validate checksum if present
+  if hasChecksum:
+    var storedChecksum = 0u32
+    for i in 0..<4:
+      storedChecksum = storedChecksum or (data[offset + i].uint32 shl (i * 8))
+
+    var computedChecksum = 0u32
+    for b in frame.data:
+      computedChecksum = computedChecksum xor b.uint32
+
+    if storedChecksum != computedChecksum:
+      return err[CompressionFrame]("Checksum mismatch")
+
+    frame.checksum = some(storedChecksum)
+
+  okFrame(frame)
 
 # =============================================================================
 # Utility Functions

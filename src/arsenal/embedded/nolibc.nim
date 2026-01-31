@@ -388,29 +388,38 @@ when defined(linux):
 
 elif defined(bare_metal):
   # For bare metal, use UART or serial port
-  # This is a placeholder - real implementation depends on hardware
+  # Platform-specific UART base address (set at link time or via config)
   var UART_BASE* {.importc, nodecl.}: ptr uint32
 
   proc putchar*(c: char) =
     ## Write to UART (hardware-specific).
+    ## Uses ARM PL011 UART register layout as baseline.
     ##
-    ## IMPLEMENTATION:
-    ## Depends on hardware. Example for ARM PL011 UART:
-    ## ```nim
-    ## const UART_DATA_OFFSET = 0  # Data register offset
-    ## const UART_FLAG_OFFSET = 0x18  # Flag register offset
-    ## const UART_FLAG_TXFF = (1 shl 5)  # TX FIFO full flag
+    ## Register layout:
+    ## - Offset 0x00: Data register (write)
+    ## - Offset 0x18: Flag register (read-only)
+    ## - Bit 5 of flag register: TX FIFO full
     ##
-    ## # Wait for TX FIFO not full
-    ## while (cast[ptr uint32](cast[uint](UART_BASE) + UART_FLAG_OFFSET)[] and UART_FLAG_TXFF) != 0:
-    ##   discard
-    ##
-    ## # Write character
-    ## cast[ptr uint32](cast[uint](UART_BASE) + UART_DATA_OFFSET)[] = c.uint32
-    ## ```
+    ## This implementation works on ARM Cortex-M, ARM Cortex-A,
+    ## and RISC-V platforms using compatible UART controllers.
 
-    # Stub - requires hardware-specific implementation
-    discard
+    when defined(arm) or defined(arm64) or defined(riscv64):
+      if UART_BASE != nil:
+        # Offset constants for ARM PL011 UART
+        const UART_DATA_OFFSET = 0    # DR - Data register
+        const UART_FLAG_OFFSET = 0x18 # FR - Flag register
+        const UART_FLAG_TXFF = (1 shl 5)  # TX FIFO full flag
+
+        # Wait for TX FIFO not full
+        while (cast[ptr uint32](cast[uint](UART_BASE) + UART_FLAG_OFFSET)[] and UART_FLAG_TXFF) != 0:
+          # Spin until TX FIFO has space
+          discard
+
+        # Write character to data register
+        cast[ptr uint32](cast[uint](UART_BASE) + UART_DATA_OFFSET)[] = c.uint32
+    else:
+      # Fallback for unsupported platforms
+      discard
 
 # =============================================================================
 # Stack Protection (Compiler Requirements)

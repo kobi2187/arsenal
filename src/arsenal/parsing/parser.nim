@@ -14,7 +14,7 @@
 ## - Streaming support for large inputs
 ## - SIMD acceleration for throughput
 
-import std/[options, tables]
+import std/[options, tables, strutils]
 
 # =============================================================================
 # Parse Result
@@ -105,23 +105,15 @@ type
 
 proc `[]`*(n: JsonNode, key: string): JsonNode =
   ## Get object field.
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if n.kind != jnkObject:
-  ##   raise newException(ValueError, "Not an object")
-  ## result = n.fields.getOrDefault(key, nil)
-  ## ```
-  nil  # Stub
+  if n.kind != jnkObject:
+    raise newException(ValueError, "Not an object")
+  result = n.fields.getOrDefault(key, nil)
 
 proc `[]`*(n: JsonNode, index: int): JsonNode =
   ## Get array element.
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if n.kind != jnkArray:
-  ##   raise newException(ValueError, "Not an array")
-  ## result = n.elems[index]
-  ## ```
-  nil  # Stub
+  if n.kind != jnkArray:
+    raise newException(ValueError, "Not an array")
+  result = n.elems[index]
 
 proc len*(n: JsonNode): int =
   ## Get array length or object field count.
@@ -177,16 +169,11 @@ type
 
 proc getHeader*(req: HttpRequest, name: string): Option[string] =
   ## Get header value by name (case-insensitive).
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## for h in req.headers:
-  ##   if h.name.toLowerAscii() == name.toLowerAscii():
-  ##     return some(h.value)
-  ## none(string)
-  ## ```
-
-  none(string)  # Stub
+  let nameLower = name.toLowerAscii()
+  for h in req.headers:
+    if h.name.toLowerAscii() == nameLower:
+      return some(h.value)
+  none(string)
 
 proc hasHeader*(req: HttpRequest, name: string): bool =
   ## Check if header exists.
