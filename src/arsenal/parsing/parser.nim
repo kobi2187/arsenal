@@ -5,7 +5,7 @@
 ## Focus on zero-copy, SIMD-accelerated implementations.
 ##
 ## Available Parsers:
-## - JSON: simdjson (gigabytes/sec with SIMD)
+## - JSON: yyjson (streaming, high-performance)
 ## - HTTP: picohttpparser (zero-copy header parsing)
 ##
 ## Design Principles:
@@ -85,8 +85,8 @@ type
 
   JsonNode* = ref object
     ## JSON value (variant object).
-    ## For high-performance use cases, consider using simdjson's
-    ## on-demand API to avoid allocating nodes.
+    ## For high-performance use cases, consider using yyjson's
+    ## streaming API to avoid allocating nodes.
     case kind*: JsonNodeKind
     of jnkNull:
       discard
@@ -199,9 +199,6 @@ type
 # =============================================================================
 # Export Parser Implementations
 # =============================================================================
-
-import ./parsers/simdjson
-export simdjson
 
 when not defined(arsenal_no_picohttpparser):
   import ./parsers/picohttpparser
