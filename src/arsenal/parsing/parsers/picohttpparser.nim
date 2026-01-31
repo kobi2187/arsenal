@@ -25,7 +25,7 @@
 {.pragma: picoImport, importc, header: "picohttpparser.h".}
 
 import ../parser
-import std/options
+import std/strutils
 
 # =============================================================================
 # picohttpparser C Bindings
@@ -87,72 +87,133 @@ proc phr_parse_headers*(
 const MaxHeaders* = 100
   ## Maximum number of headers to parse
 
+# Forward declaration for parseMethod
+proc parseMethod(meth: string): HttpMethod
+
 proc parseHttpRequest*(data: openArray[byte]): ParseResult[HttpRequest] =
   ## Parse HTTP request from byte buffer.
   ## Zero-copy: path and header values reference original buffer.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## var method, path: cstring
-  ## var methodLen, pathLen: csize_t
-  ## var minorVersion: cint
-  ## var headers: array[MaxHeaders, phr_header]
-  ## var numHeaders = MaxHeaders.csize_t
-  ##
-  ## let bufPtr = cast[cstring](unsafeAddr data[0])
-  ## let consumed = phr_parse_request(
-  ##   bufPtr, data.len.csize_t,
-  ##   addr method, addr methodLen,
-  ##   addr path, addr pathLen,
-  ##   addr minorVersion,
-  ##   cast[ptr phr_header](addr headers[0]),
-  ##   addr numHeaders,
-  ##   0  # last_len for progressive parsing
-  ## )
-  ##
-  ## if consumed < 0:
-  ##   if consumed == -1:
-  ##     return err[HttpRequest]("Parse error")
-  ##   else:  # -2
-  ##     return err[HttpRequest]("Incomplete request")
-  ##
-  ## # Build HttpRequest
-  ## var req = HttpRequest()
-  ## req.meth = parseMethod($method)  # TODO: implement parseMethod
-  ## req.path = $path  # Copy to string
-  ## req.version = HttpVersion(major: 1, minor: minorVersion.int)
-  ##
-  ## # Copy headers
-  ## for i in 0..<numHeaders.int:
-  ##   req.headers.add(HttpHeader(
-  ##     name: headers[i].name[0..<headers[i].name_len.int],
-  ##     value: headers[i].value[0..<headers[i].value_len.int]
-  ##   ))
-  ##
-  ## req.bodyOffset = consumed.int
-  ## ok(req, consumed.int)
-  ## ```
 
-  # Stub
-  err[HttpRequest]("Not implemented")
+  if data.len == 0:
+    return err[HttpRequest]("Empty request buffer")
+
+  var `method`, path: cstring
+  var methodLen, pathLen: csize_t
+  var minorVersion: cint
+  var headers: array[MaxHeaders, phr_header]
+  var numHeaders = MaxHeaders.csize_t
+
+  let bufPtr = cast[cstring](unsafeAddr data[0])
+  let consumed = phr_parse_request(
+    bufPtr, data.len.csize_t,
+    addr `method`, addr methodLen,
+    addr path, addr pathLen,
+    addr minorVersion,
+    cast[ptr phr_header](addr headers[0]),
+    addr numHeaders,
+    0  # last_len for progressive parsing
+  )
+
+  if consumed < 0:
+    if consumed == -1:
+      return err[HttpRequest]("Parse error: invalid request")
+    else:  # -2
+      return err[HttpRequest]("Incomplete request")
+
+  # Build HttpRequest
+  var req = HttpRequest()
+  let methodStr = $`method`
+  req.meth = parseMethod(methodStr)
+  let pathStr = $`path`
+  req.path = pathStr
+  req.version = HttpVersion(major: 1, minor: minorVersion.int)
+
+  # Copy headers
+  for i in 0..<numHeaders.int:
+    let nameStr = $headers[i].name
+    let valueStr = $headers[i].value
+    req.headers.add(HttpHeader(name: nameStr, value: valueStr))
+
+  req.bodyOffset = consumed.int
+  ok(req, consumed.int)
 
 proc parseHttpResponse*(data: openArray[byte]): ParseResult[HttpResponse] =
   ## Parse HTTP response from byte buffer.
-  ##
-  ## IMPLEMENTATION:
-  ## Similar to parseHttpRequest, but uses phr_parse_response
 
-  # Stub
-  err[HttpResponse]("Not implemented")
+  if data.len == 0:
+    return err[HttpResponse]("Empty response buffer")
+
+  var minorVersion: cint
+  var status: cint
+  var msg: cstring
+  var msgLen: csize_t
+  var headers: array[MaxHeaders, phr_header]
+  var numHeaders = MaxHeaders.csize_t
+
+  let bufPtr = cast[cstring](unsafeAddr data[0])
+  let consumed = phr_parse_response(
+    bufPtr, data.len.csize_t,
+    addr minorVersion,
+    addr status,
+    addr msg,
+    addr msgLen,
+    cast[ptr phr_header](addr headers[0]),
+    addr numHeaders,
+    0
+  )
+
+  if consumed < 0:
+    if consumed == -1:
+      return err[HttpResponse]("Parse error: invalid response")
+    else:  # -2
+      return err[HttpResponse]("Incomplete response")
+
+  # Build HttpResponse
+  var resp = HttpResponse()
+  resp.version = HttpVersion(major: 1, minor: minorVersion.int)
+  resp.statusCode = status.int
+  resp.statusMessage = $msg
+
+  # Copy headers
+  for i in 0..<numHeaders.int:
+    let nameStr = $headers[i].name
+    let valueStr = $headers[i].value
+    resp.headers.add(HttpHeader(name: nameStr, value: valueStr))
+
+  resp.bodyOffset = consumed.int
+  ok(resp, consumed.int)
 
 proc parseHeaders*(data: openArray[byte]): ParseResult[seq[HttpHeader]] =
   ## Parse headers only (useful for chunked encoding).
-  ##
-  ## IMPLEMENTATION:
-  ## Use phr_parse_headers
 
-  # Stub
-  err[seq[HttpHeader]]("Not implemented")
+  if data.len == 0:
+    return ok(newSeq[HttpHeader](), 0)
+
+  var headers: array[MaxHeaders, phr_header]
+  var numHeaders = MaxHeaders.csize_t
+
+  let bufPtr = cast[cstring](unsafeAddr data[0])
+  let consumed = phr_parse_headers(
+    bufPtr, data.len.csize_t,
+    cast[ptr phr_header](addr headers[0]),
+    addr numHeaders,
+    0
+  )
+
+  if consumed < 0:
+    if consumed == -1:
+      return err[seq[HttpHeader]]("Parse error: invalid headers")
+    else:  # -2
+      return err[seq[HttpHeader]]("Incomplete headers")
+
+  # Build header sequence
+  var headerSeq = newSeq[HttpHeader]()
+  for i in 0..<numHeaders.int:
+    let nameStr = $headers[i].name
+    let valueStr = $headers[i].value
+    headerSeq.add(HttpHeader(name: nameStr, value: valueStr))
+
+  ok(headerSeq, consumed.int)
 
 # =============================================================================
 # Progressive Parsing
@@ -176,16 +237,56 @@ proc feed*(p: var HttpRequestParser, data: openArray[byte]): ParseResult[HttpReq
   ## - Ok with request if complete
   ## - Err with "incomplete" if more data needed
   ## - Err with "parse error" if invalid
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Append data to internal buffer
-  ## 2. Call phr_parse_request with lastLen
-  ## 3. If successful, extract request and clear buffer
-  ## 4. If incomplete (-2), save lastLen for next call
-  ## 5. If error (-1), return error
 
-  # Stub
-  err[HttpRequest]("Not implemented")
+  # Append data to internal buffer
+  p.buffer.add(data)
+
+  if p.buffer.len == 0:
+    return err[HttpRequest]("No data")
+
+  # Try to parse
+  var `method`, path: cstring
+  var methodLen, pathLen: csize_t
+  var minorVersion: cint
+  var headers: array[MaxHeaders, phr_header]
+  var numHeaders = MaxHeaders.csize_t
+
+  let bufPtr = cast[cstring](unsafeAddr p.buffer[0])
+  let consumed = phr_parse_request(
+    bufPtr, p.buffer.len.csize_t,
+    addr `method`, addr methodLen,
+    addr path, addr pathLen,
+    addr minorVersion,
+    cast[ptr phr_header](addr headers[0]),
+    addr numHeaders,
+    p.lastLen.csize_t
+  )
+
+  if consumed < 0:
+    if consumed == -1:
+      p.reset()
+      return err[HttpRequest]("Parse error: invalid request")
+    else:  # -2
+      p.lastLen = p.buffer.len
+      return err[HttpRequest]("Incomplete request")
+
+  # Build HttpRequest
+  var req = HttpRequest()
+  let methodStr = $`method`
+  req.meth = parseMethod(methodStr)
+  let pathStr = $`path`
+  req.path = pathStr
+  req.version = HttpVersion(major: 1, minor: minorVersion.int)
+
+  # Copy headers
+  for i in 0..<numHeaders.int:
+    let nameStr = $headers[i].name
+    let valueStr = $headers[i].value
+    req.headers.add(HttpHeader(name: nameStr, value: valueStr))
+
+  req.bodyOffset = consumed.int
+  p.reset()
+  ok(req, consumed.int)
 
 proc reset*(p: var HttpRequestParser) =
   ## Reset parser state.
@@ -198,23 +299,17 @@ proc reset*(p: var HttpRequestParser) =
 
 proc parseMethod(meth: string): HttpMethod =
   ## Parse HTTP method string.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## case meth
-  ## of "GET": hmGet
-  ## of "POST": hmPost
-  ## of "PUT": hmPut
-  ## of "DELETE": hmDelete
-  ## of "HEAD": hmHead
-  ## of "OPTIONS": hmOptions
-  ## of "PATCH": hmPatch
-  ## of "TRACE": hmTrace
-  ## of "CONNECT": hmConnect
-  ## else: raise newException(ValueError, "Unknown HTTP method: " & meth)
-  ## ```
-
-  hmGet  # Stub
+  case meth
+  of "GET": hmGet
+  of "POST": hmPost
+  of "PUT": hmPut
+  of "DELETE": hmDelete
+  of "HEAD": hmHead
+  of "OPTIONS": hmOptions
+  of "PATCH": hmPatch
+  of "TRACE": hmTrace
+  of "CONNECT": hmConnect
+  else: hmGet  # Default to GET for unknown methods
 
 proc `$`*(h: HttpHeader): string =
   ## Format header as "Name: Value"
@@ -222,15 +317,9 @@ proc `$`*(h: HttpHeader): string =
 
 proc `$`*(req: HttpRequest): string =
   ## Format request for debugging.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result = $req.meth & " " & req.path & " HTTP/" & $req.version.major & "." & $req.version.minor & "\r\n"
-  ## for h in req.headers:
-  ##   result.add $h & "\r\n"
-  ## ```
-
-  ""  # Stub
+  result = $req.meth & " " & req.path & " HTTP/" & $req.version.major & "." & $req.version.minor & "\r\n"
+  for h in req.headers:
+    result.add $h & "\r\n"
 
 # =============================================================================
 # Chunked Transfer Encoding
@@ -239,28 +328,25 @@ proc `$`*(req: HttpRequest): string =
 proc parseChunkSize*(data: openArray[byte]): ParseResult[int] =
   ## Parse chunk size line from chunked transfer encoding.
   ## Format: "1a3f\r\n" -> 0x1a3f
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## # Find \r\n
-  ## var i = 0
-  ## while i < data.len and data[i] notin {'\r'.byte, '\n'.byte}:
-  ##   inc i
-  ##
-  ## if i >= data.len or data[i] != '\r'.byte:
-  ##   return err[int]("Invalid chunk size")
-  ##
-  ## # Parse hex number
-  ## let sizeStr = cast[string](data[0..<i])
-  ## try:
-  ##   let size = parseHexInt(sizeStr)
-  ##   ok(size, i + 2)  # +2 for \r\n
-  ## except ValueError:
-  ##   err[int]("Invalid hex in chunk size")
-  ## ```
 
-  # Stub
-  err[int]("Not implemented")
+  # Find \r\n
+  var i = 0
+  while i < data.len and data[i] != '\r'.byte:
+    inc i
+
+  if i >= data.len:
+    return err[int]("No CRLF found in chunk size line")
+
+  if i + 1 >= data.len or data[i + 1] != '\n'.byte:
+    return err[int]("Invalid chunk size format")
+
+  # Parse hex number
+  let sizeStr = cast[string](data[0..<i])
+  try:
+    let size = parseHexInt(sizeStr)
+    ok(size, i + 2)  # +2 for \r\n
+  except ValueError:
+    err[int]("Invalid hex in chunk size: " & sizeStr)
 
 # =============================================================================
 # Platform Configuration
