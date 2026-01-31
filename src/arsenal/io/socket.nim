@@ -44,15 +44,30 @@ proc newAsyncSocket*(loop: EventLoop = nil): AsyncSocket =
   ##
   ## IMPLEMENTATION:
   ## 1. Create socket with socket() syscall
-  ## 2. Set non-blocking mode (O_NONBLOCK)
-  ## 3. Set close-on-exec (FD_CLOEXEC)
+  ## 2. Set non-blocking mode (O_NONBLOCK via fcntl)
+  ## 3. Set close-on-exec (FD_CLOEXEC via fcntl)
+
+  let fd = createNativeSocket()
 
   result = AsyncSocket(
-    fd: createNativeSocket(),
+    fd: fd,
     loop: loop
   )
 
-  # TODO: Set non-blocking and close-on-exec
+  # Set non-blocking mode
+  when defined(windows):
+    # Windows: Use ioctlsocket with FIONBIO
+    var mode: clong = 1
+    discard ioctlsocket(fd, FIONBIO, addr mode)
+  else:
+    # Unix/Linux: Use fcntl with O_NONBLOCK
+    let flags = fcntl(fd, F_GETFL, 0)
+    discard fcntl(fd, F_SETFL, flags or O_NONBLOCK)
+
+  # Set close-on-exec flag (prevents fd leak to child processes)
+  when not defined(windows):
+    let cloexecFlags = fcntl(fd, F_GETFD, 0)
+    discard fcntl(fd, F_SETFD, cloexecFlags or FD_CLOEXEC)
 
 proc close*(socket: AsyncSocket) =
   ## Close the socket.

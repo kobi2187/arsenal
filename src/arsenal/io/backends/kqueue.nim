@@ -86,31 +86,23 @@ type
 
 proc initKqueue*(maxEvents: int = 1024): KqueueBackend =
   ## Initialize kqueue backend.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result.kq = kqueue()
-  ## if result.kq < 0:
-  ##   raise newException(OSError, "kqueue() failed")
-  ## result.events = newSeq[Kevent](maxEvents)
-  ## result.maxEvents = maxEvents
-  ## ```
+  ## Creates a new kernel event queue and allocates buffer for events.
+
+  result.kq = kqueue()
+  if result.kq < 0:
+    raise newException(OSError, "kqueue() failed")
 
   result.maxEvents = maxEvents
   result.events = newSeq[Kevent](maxEvents)
-  # TODO: Call kqueue()
 
 proc destroyKqueue*(backend: var KqueueBackend) =
   ## Clean up kqueue backend.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if backend.kq >= 0:
-  ##   discard close(backend.kq)
-  ##   backend.kq = -1
-  ## ```
+  ## Closes the kqueue file descriptor and clears event buffer.
 
-  discard
+  if backend.kq >= 0:
+    discard close(backend.kq)
+    backend.kq = -1
+  backend.events.setLen(0)
 
 proc addRead*(backend: var KqueueBackend, fd: int, data: pointer = nil) =
   ## Register interest in read events.

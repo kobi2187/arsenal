@@ -224,26 +224,126 @@ when defined(linux) and defined(amd64):
 
 elif defined(linux) and defined(arm64):
   # ARM64 uses SVC instruction
+  # ABI: syscall number in x8, args in x0-x5, return in x0
+
   proc syscall0*(number: clong): clong {.inline.} =
-    ## IMPLEMENTATION:
-    ## ```nim
-    ## {.emit: """
-    ## register long x8 asm("x8") = `number`;
-    ## register long x0 asm("x0");
-    ## asm volatile(
-    ##   "svc #0"
-    ##   : "=r"(x0)
-    ##   : "r"(x8)
-    ##   : "memory"
-    ## );
-    ## `result` = x0;
-    ## """.}
-    ## ```
+    ## System call with 0 arguments (ARM64).
+    {.emit: """
+    register long x8 asm("x8") = `number`;
+    register long x0 asm("x0");
+    asm volatile(
+      "svc #0"
+      : "=r"(x0)
+      : "r"(x8)
+      : "memory"
+    );
+    `result` = x0;
+    """.}
 
-    # Stub
-    0
+  proc syscall1*(number: clong, arg1: clong): clong {.inline.} =
+    ## System call with 1 argument (ARM64).
+    ## Argument in x0
+    {.emit: """
+    register long x8 asm("x8") = `number`;
+    register long x0 asm("x0") = `arg1`;
+    asm volatile(
+      "svc #0"
+      : "=r"(x0)
+      : "r"(x8), "0"(x0)
+      : "memory"
+    );
+    `result` = x0;
+    """.}
 
-  # TODO: Implement syscall1-6 for ARM64
+  proc syscall2*(number: clong, arg1, arg2: clong): clong {.inline.} =
+    ## System call with 2 arguments (ARM64).
+    ## Arguments in x0, x1
+    {.emit: """
+    register long x8 asm("x8") = `number`;
+    register long x0 asm("x0") = `arg1`;
+    register long x1 asm("x1") = `arg2`;
+    asm volatile(
+      "svc #0"
+      : "=r"(x0)
+      : "r"(x8), "0"(x0), "r"(x1)
+      : "memory"
+    );
+    `result` = x0;
+    """.}
+
+  proc syscall3*(number: clong, arg1, arg2, arg3: clong): clong {.inline.} =
+    ## System call with 3 arguments (ARM64).
+    ## Arguments in x0, x1, x2
+    {.emit: """
+    register long x8 asm("x8") = `number`;
+    register long x0 asm("x0") = `arg1`;
+    register long x1 asm("x1") = `arg2`;
+    register long x2 asm("x2") = `arg3`;
+    asm volatile(
+      "svc #0"
+      : "=r"(x0)
+      : "r"(x8), "0"(x0), "r"(x1), "r"(x2)
+      : "memory"
+    );
+    `result` = x0;
+    """.}
+
+  proc syscall4*(number: clong, arg1, arg2, arg3, arg4: clong): clong {.inline.} =
+    ## System call with 4 arguments (ARM64).
+    ## Arguments in x0, x1, x2, x3
+    {.emit: """
+    register long x8 asm("x8") = `number`;
+    register long x0 asm("x0") = `arg1`;
+    register long x1 asm("x1") = `arg2`;
+    register long x2 asm("x2") = `arg3`;
+    register long x3 asm("x3") = `arg4`;
+    asm volatile(
+      "svc #0"
+      : "=r"(x0)
+      : "r"(x8), "0"(x0), "r"(x1), "r"(x2), "r"(x3)
+      : "memory"
+    );
+    `result` = x0;
+    """.}
+
+  proc syscall5*(number: clong, arg1, arg2, arg3, arg4, arg5: clong): clong {.inline.} =
+    ## System call with 5 arguments (ARM64).
+    ## Arguments in x0, x1, x2, x3, x4
+    {.emit: """
+    register long x8 asm("x8") = `number`;
+    register long x0 asm("x0") = `arg1`;
+    register long x1 asm("x1") = `arg2`;
+    register long x2 asm("x2") = `arg3`;
+    register long x3 asm("x3") = `arg4`;
+    register long x4 asm("x4") = `arg5`;
+    asm volatile(
+      "svc #0"
+      : "=r"(x0)
+      : "r"(x8), "0"(x0), "r"(x1), "r"(x2), "r"(x3), "r"(x4)
+      : "memory"
+    );
+    `result` = x0;
+    """.}
+
+  proc syscall6*(number: clong, arg1, arg2, arg3, arg4, arg5, arg6: clong): clong {.inline.} =
+    ## System call with 6 arguments (ARM64).
+    ## Arguments in x0, x1, x2, x3, x4, x5
+    {.emit: """
+    register long x8 asm("x8") = `number`;
+    register long x0 asm("x0") = `arg1`;
+    register long x1 asm("x1") = `arg2`;
+    register long x2 asm("x2") = `arg3`;
+    register long x3 asm("x3") = `arg4`;
+    register long x4 asm("x4") = `arg5`;
+    register long x5 asm("x5") = `arg6`;
+    asm volatile(
+      "svc #0"
+      : "=r"(x0)
+      : "r"(x8), "0"(x0), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5)
+      : "memory"
+    );
+    `result` = x0;
+    """.}
 
 # =============================================================================
 # Generic Syscall (Varargs Fallback)
