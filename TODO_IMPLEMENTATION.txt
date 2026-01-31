@@ -1,0 +1,514 @@
+================================================================================
+ARSENAL IMPLEMENTATION TODO LIST
+================================================================================
+Generated: 2026-01-31
+Total Tasks: 100+
+Priority: CRITICAL to NICE-TO-HAVE
+
+================================================================================
+PHASE 1: VENDOR CODE SETUP (Blocking all other work)
+================================================================================
+
+[ ] 1.1 Clone picohttpparser
+  - git clone https://github.com/h2o/picohttpparser vendor/picohttpparser
+  - Verify version: latest stable
+  - Add to .gitignore if needed
+
+[ ] 1.2 Clone simdjson
+  - git clone https://github.com/simdjson/simdjson vendor/simdjson
+  - Note: This is C++, may need C wrapper or different approach
+  - Research Nim-to-C++ binding approaches
+
+[ ] 1.3 Clone xxHash
+  - git clone https://github.com/Cyan4973/xxHash vendor/xxhash
+  - Extract xxHash64 implementation
+  - Identify required functions: hash64, init64, update64, finalize64
+
+[ ] 1.4 Clone Zstandard
+  - git clone https://github.com/facebook/zstd vendor/zstd
+  - Or: apt-get install libzstd-dev (if system package sufficient)
+  - Verify: headers in include/, libs in lib/
+
+[ ] 1.5 Verify LZ4
+  - Already system package likely
+  - Verify: apt-get install liblz4-dev
+  - Verify: headers and libs available
+
+[ ] 1.6 Create vendor/README.md
+  - Document which version of each library was cloned
+  - Add license information
+  - Add local patch notes if any
+
+================================================================================
+PHASE 2: BINDING VERIFICATION & COMPARISON (Against C APIs)
+================================================================================
+
+[ ] 2.1 Verify picohttpparser C declarations
+  - File: vendor/picohttpparser/picohttpparser.h
+  - Compare with: src/arsenal/parsing/parsers/picohttpparser.nim
+  - Create mapping document: bindings/picohttpparser_verify.txt
+  - Check: function signatures, parameter types, return types
+  - Verify: macro definitions (MAX_HEADERS, etc.)
+
+[ ] 2.2 Verify simdjson C declarations
+  - File: vendor/simdjson/simdjson.h (or simdjson.hpp)
+  - Challenge: C++ library requires extern "C" wrapper or alternative
+  - Research: Existing C bindings for simdjson
+  - Decision: Use C bindings OR create C wrapper OR find simdjson-c
+
+[ ] 2.3 Verify xxHash C declarations
+  - File: vendor/xxhash/xxhash.h
+  - Compare with: src/arsenal/hashing/hashers/xxhash64.nim
+  - Extract: xxHash64(), XXH64_init, XXH64_update, XXH64_digest
+
+[ ] 2.4 Verify Zstandard C declarations
+  - File: vendor/zstd/lib/zstd.h (or /usr/include/zstd.h)
+  - Compare with: src/arsenal/compression/compressors/zstd.nim
+  - Extract: ZSTD_compress, ZSTD_decompress, streaming functions
+
+[ ] 2.5 Create binding verification report
+  - Document all mismatches found
+  - Flag any missing functions
+  - Note platform-specific differences
+
+================================================================================
+PHASE 3: HASHING IMPLEMENTATION (High priority, straightforward)
+================================================================================
+
+[ ] 3.1 Implement xxHash64 algorithm
+  - File: src/arsenal/hashing/hasher.nim line 136
+  - Task: Replace simple XOR with actual xxHash64
+  - Research: xxHash64 algorithm (Cyan4973/xxHash documentation)
+  - Implement: One-shot hashing function
+  - Test: Known test vectors from xxHash repository
+
+[ ] 3.2 Implement incremental xxHash64
+  - File: src/arsenal/hashing/hasher.nim lines 175, 191
+  - Task: Implement XXH64State update/finish
+  - Algorithm: Block processing, state management
+  - Test: Compare against one-shot for same data
+
+[ ] 3.3 Implement wyhash64 algorithm
+  - File: src/arsenal/hashing/hasher.nim line 252
+  - Research: wyhash algorithm (Wang Yi's wyhash)
+  - Implement: Proper wyhash64 (replace XOR fallback)
+  - Test: Verify bit distribution properties
+
+[ ] 3.4 Implement FNV1a hashing
+  - File: src/arsenal/hashing/hasher.nim
+  - Task: Verify if present or implement from scratch
+  - Algorithm: FNV-1a constant-time algorithm
+  - Test: Known FNV test vectors
+
+[ ] 3.5 Test all hash functions
+  - Create: tests/test_hashing.nim
+  - Test vectors: known outputs for known inputs
+  - Performance: benchmark against expected throughput
+  - Regression: ensure no hash function breaks
+
+================================================================================
+PHASE 4: HTTP PARSING IMPLEMENTATION (High priority, complex)
+================================================================================
+
+[ ] 4.1 Understand picohttpparser C API
+  - Read: vendor/picohttpparser/README.md
+  - Read: vendor/picohttpparser/picohttpparser.c (reference implementation)
+  - Document: Return values, error codes, parsing states
+
+[ ] 4.2 Implement parseHttpRequest()
+  - File: src/arsenal/parsing/parsers/picohttpparser.nim line 90
+  - Create Nim wrapper around phr_parse_request()
+  - Parse: method, path, version, headers
+  - Handle: Error cases, incomplete requests
+  - Test: Valid requests, edge cases, malformed requests
+
+[ ] 4.3 Implement parseHttpResponse()
+  - File: src/arsenal/parsing/parsers/picohttpparser.nim line 139
+  - Create Nim wrapper around phr_parse_response()
+  - Parse: status, reason, version, headers
+  - Handle: Error cases
+  - Test: Valid responses, edge cases
+
+[ ] 4.4 Implement parseHeaders()
+  - File: src/arsenal/parsing/parsers/picohttpparser.nim line 148
+  - Standalone header-only parsing
+  - Reuse: phr_parse_headers() C function
+  - Test: Various header combinations
+
+[ ] 4.5 Implement parseMethod()
+  - File: src/arsenal/parsing/parsers/picohttpparser.nim line 199
+  - Replace: hardcoded hmGet fallback
+  - Implement: Proper string→enum mapping
+  - Methods: GET, POST, PUT, DELETE, HEAD, OPTIONS, PATCH, TRACE, CONNECT
+  - Test: All methods, case sensitivity
+
+[ ] 4.6 Implement progressive/streaming parsing
+  - File: src/arsenal/parsing/parsers/picohttpparser.nim line 173
+  - Task: feed() function for incomplete requests
+  - Feature: lastLen parameter tracking
+  - Behavior: Accumulate buffer, parse when complete
+  - Test: Data arriving in chunks
+
+[ ] 4.7 Implement parseChunkSize()
+  - File: src/arsenal/parsing/parsers/picohttpparser.nim line 239
+  - Task: Parse hex chunk size line "1a3f\r\n"
+  - Format: Validate "size\r\n"
+  - Handle: Invalid hex, missing CRLF
+  - Test: Valid chunks, edge cases
+
+[ ] 4.8 Create comprehensive HTTP parser tests
+  - File: tests/test_http_parsing.nim
+  - Test data: Sample HTTP requests/responses
+  - Coverage: All parsing functions
+  - Edge cases: Truncated data, invalid headers, special chars
+
+================================================================================
+PHASE 5: JSON PARSING IMPLEMENTATION (High priority, complex)
+================================================================================
+
+[ ] 5.1 Investigate simdjson binding approach
+  - Problem: simdjson is C++, Nim needs C bindings
+  - Options:
+    a) Use simdjson-c (if available/maintained)
+    b) Create C++ wrapper with extern "C"
+    c) Find alternative pure-Nim JSON library
+    d) Use simdjson via subprocess/IPC (not ideal)
+  - Decision: Make decision before proceeding
+
+[ ] 5.2 Research simdjson API (if using simdjson)
+  - File: vendor/simdjson/include/simdjson.h
+  - Read: Documentation, examples
+  - Document: Available functions, required data structures
+
+[ ] 5.3 Implement JSON parser initialization
+  - File: src/arsenal/parsing/parsers/simdjson.nim line 153
+  - Task: Create and initialize parser object
+  - Binding: Call appropriate C function
+  - Error handling: Capture init errors
+
+[ ] 5.4 Implement parse() function
+  - File: src/arsenal/parsing/parsers/simdjson.nim line 186
+  - Task: Parse JSON string to DOM
+  - Error handling: Capture parse errors
+  - Result: Return parsed object or error
+
+[ ] 5.5 Implement parseFile() function
+  - File: src/arsenal/parsing/parsers/simdjson.nim line 199
+  - Task: Read file and parse JSON
+  - Feature: Memory mapping (if supported by simdjson)
+  - Error handling: File I/O errors + parse errors
+
+[ ] 5.6 Implement element access operations
+  - File: src/arsenal/parsing/parsers/simdjson.nim lines 217, 226
+  - Functions: []() for field access, at() for array indexing
+  - Behavior: Return Option[SimdJsonElement]
+  - Error handling: Out of bounds, wrong type
+
+[ ] 5.7 Implement type extraction functions
+  - File: src/arsenal/parsing/parsers/simdjson.nim lines 244, 258, 262, 266, 274
+  - Functions: getStr(), getInt(), getFloat(), getBool(), isNull()
+  - Behavior: Extract typed values
+  - Error handling: Type mismatch
+
+[ ] 5.8 Implement iteration functions
+  - File: src/arsenal/parsing/parsers/simdjson.nim lines 294, 307
+  - Functions: items() for arrays, pairs() for objects
+  - Behavior: Iterate over elements
+  - Error handling: Non-iterable types
+
+[ ] 5.9 Implement validate() function
+  - File: src/arsenal/parsing/parsers/simdjson.nim line 327
+  - Task: Check if JSON is valid without full parsing
+  - Performance: Fast schema validation if available
+  - Result: Boolean or validation error info
+
+[ ] 5.10 Create comprehensive JSON parser tests
+  - File: tests/test_json_parsing.nim
+  - Test data: Valid JSON, invalid JSON, edge cases
+  - Coverage: All data types, nested structures
+  - Benchmark: Compare against target throughput
+
+================================================================================
+PHASE 6: COMPRESSION IMPLEMENTATION (High priority, straightforward)
+================================================================================
+
+[ ] 6.1 Understand Zstandard C API
+  - Read: vendor/zstd/lib/zstd.h
+  - Understand: Context objects, compression levels, streaming
+  - Document: Error codes, memory requirements
+
+[ ] 6.2 Implement ZstdCompressor initialization
+  - File: src/arsenal/compression/compressors/zstd.nim line 179
+  - Task: Create compression context
+  - Call: ZSTD_createCCtx()
+  - Error handling: Capture initialization errors
+
+[ ] 6.3 Implement compress() function
+  - File: src/arsenal/compression/compressors/zstd.nim line 208
+  - Task: Compress data using zstd
+  - Call: ZSTD_compress()
+  - Parameters: compression level, buffer management
+  - Test: Various data types, sizes
+
+[ ] 6.4 Implement ZstdDecompressor initialization
+  - File: src/arsenal/compression/compressors/zstd.nim line 235
+  - Task: Create decompression context
+  - Call: ZSTD_createDCtx()
+
+[ ] 6.5 Implement decompress() function
+  - File: src/arsenal/compression/compressors/zstd.nim line 258
+  - Task: Decompress zstd data
+  - Call: ZSTD_decompress()
+  - Error handling: Invalid data detection
+  - Test: Round-trip compress/decompress
+
+[ ] 6.6 Implement streaming compressor
+  - File: src/arsenal/compression/compressors/zstd.nim lines 288, 299, 308
+  - Functions: initStream(), compressChunk(), finish()
+  - Feature: Process large files in chunks
+  - Test: Large file compression
+
+[ ] 6.7 Test compression thoroughly
+  - File: tests/test_zstd.nim
+  - Test cases: Empty data, small data, large data
+  - Compression levels: Test multiple levels
+  - Round-trip: Verify decompress(compress(x)) == x
+  - Benchmark: Compare against system zstd
+
+[ ] 6.8 Implement frame format encoding (optional)
+  - File: src/arsenal/compression/compressor.nim lines 149, 162
+  - Task: Add framing metadata for compressed streams
+  - Benefit: Frame magic, checksums, metadata
+  - If time: implement, otherwise leave as TODO
+
+================================================================================
+PHASE 7: I/O BACKENDS (Medium priority, platform-specific)
+================================================================================
+
+[ ] 7.1 Complete Linux epoll backend
+  - File: src/arsenal/io/backends/epoll.nim line 123
+  - Function: removeFd() implementation
+  - Call: epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL)
+  - Test: Add/remove event loop operations
+
+[ ] 7.2 Implement BSD kqueue backend (macOS/BSD)
+  - File: src/arsenal/io/backends/kqueue.nim
+  - Functions to implement:
+    - initKqueue() line 101: Call kqueue() syscall
+    - destroyKqueue() line 113: Clean up
+    - addRead() line 139: Register read events
+    - addWrite() line 153: Register write events
+    - removeFd() line 167: Deregister events
+  - Test: Requires macOS or BSD system
+
+[ ] 7.3 Implement Windows IOCP backend
+  - File: src/arsenal/io/backends/iocp.nim
+  - Functions to implement:
+    - initIocp() line 119: CreateIoCompletionPort()
+    - destroyIocp() line 131: Close handle
+    - associateHandle() line 153: Bind to IOCP
+    - post() line 193: PostQueuedCompletionStatus()
+  - Test: Requires Windows system
+  - Challenge: Requires conditional compilation guards
+
+[ ] 7.4 Implement async socket operations
+  - File: src/arsenal/io/socket.nim
+  - Functions: newAsyncSocket, connect, bindAddr, listen, accept, send/recv
+  - Set: Non-blocking flag + close-on-exec
+  - Integration: Test with event loop backends
+  - Test: Socket server/client communication
+
+[ ] 7.5 Create eventloop integration tests
+  - File: tests/test_eventloop.nim
+  - Test: Select appropriate backend (epoll/kqueue/IOCP)
+  - Scenarios: Accept connection, send/recv, error handling
+
+================================================================================
+PHASE 8: OBVIOUS STUB IMPLEMENTATIONS (Easy wins)
+================================================================================
+
+[ ] 8.1 Implement simple utility functions
+  - File: src/arsenal/filesystem/rawfs.nim
+  - Review: All filesystem operations
+  - Status: Most likely mostly working after compilation fixes
+  - Task: Verify and test
+
+[ ] 8.2 Review and implement allocator base functions
+  - File: src/arsenal/memory/allocator.nim
+  - Status: Should be working
+  - Task: Verify with tests
+
+[ ] 8.3 Fixed-point sin() optimization (optional)
+  - File: src/arsenal/numeric/fixed.nim line 164
+  - Current: Uses float sin() - works but defeats purpose
+  - Option: Implement Taylor series or LUT
+  - Priority: LOW (float version works correctly)
+
+[ ] 8.4 Complete concurrency primitives
+  - File: src/arsenal/concurrency/channels/select.nim line 113
+  - Function: selectChannel() implementation
+  - Behavior: Wait for any channel to be ready
+  - Implementation: Platform-dependent (WaitForMultipleObjects on Windows)
+
+[ ] 8.5 Review Platform config
+  - File: src/arsenal/platform/config.nim
+  - Check: Already compiling without errors
+  - Verify: CPU detection works (currently stubbed)
+
+================================================================================
+PHASE 9: ARCHITECTURE-SPECIFIC (Complex, lower priority)
+================================================================================
+
+[ ] 9.1 Understand libaco context switching
+  - File: vendor/libaco/acosw.S (assembly)
+  - Research: x86_64 calling conventions, stack frames
+  - Decision: ARM64 support needed? (currently x86_64 only)
+
+[ ] 9.2 Implement ARM64 syscall wrappers (if needed)
+  - File: src/arsenal/kernel/syscalls.nim lines 243, 246
+  - Research: ARM64 ABI, syscall calling conventions
+  - Priority: Only if ARM64 support required
+  - Alternative: Use inline assembly or separate .s file
+
+[ ] 9.3 Implement x86 CPUID detection (optional)
+  - File: src/arsenal/platform/config.nim lines 145, 152, 153
+  - Task: Execute CPUID instruction, extract features
+  - Method: Inline assembly (.emit or {.asm.} pragma)
+  - Priority: MEDIUM (useful for feature detection)
+
+================================================================================
+PHASE 10: EMBEDDED/HAL (Lower priority, platform-specific)
+================================================================================
+
+[ ] 10.1 RP2040 GPIO implementation (if RP2040 support needed)
+  - File: src/arsenal/embedded/hal.nim
+  - Functions: setMode, read, write, toggle
+  - Requires: RP2040 datasheet, mcu-specific registers
+  - Priority: LOW (depends on use case)
+
+[ ] 10.2 RP2040 UART implementation (if RP2040 support needed)
+  - File: src/arsenal/embedded/hal.nim
+  - Functions: init, read, write, available
+  - Priority: LOW
+
+[ ] 10.3 RTOS task scheduling (if RTOS needed)
+  - File: src/arsenal/embedded/rtos.nim
+  - Requires: Architecture-specific context switching
+  - Priority: LOW (depends on use case)
+
+================================================================================
+PHASE 11: WINDOWS MSVC SUPPORT (Critical but complex)
+================================================================================
+
+[ ] 11.1 CRITICAL: Document MSVC atomic operations issue
+  - File: src/arsenal/concurrency/atomics/atomic.nim line 29
+  - Current status: NON-ATOMIC fallback (data corruption risk!)
+  - Task: Add warning to documentation
+  - Impact: Production code on Windows at risk
+
+[ ] 11.2 Implement MSVC intrinsics (if Windows support needed)
+  - File: src/arsenal/concurrency/atomics/atomic.nim
+  - Research: MSVC compiler intrinsics __InterlockedCompareExchange, etc.
+  - Implement: 15+ atomic operations
+  - Priority: HIGH (but only if Windows MSVC needed)
+  - Alternative: Document that only GCC/Clang are supported for now
+
+================================================================================
+PHASE 12: TESTING & VALIDATION (Ongoing)
+================================================================================
+
+[ ] 12.1 Create unit tests for each implemented function
+  - Location: tests/ directory
+  - Coverage: All public functions
+  - Test data: Valid inputs, edge cases, error cases
+
+[ ] 12.2 Create integration tests
+  - Location: tests/integration/
+  - Scenarios: Real-world usage patterns
+  - Platform-specific: Test each backend separately
+
+[ ] 12.3 Performance benchmarks
+  - Location: benchmarks/
+  - Measure: Against expectations in docstrings
+  - Compare: Against reference implementations
+
+[ ] 12.4 Documentation updates
+  - Location: docs/
+  - Document: Implementation status of each module
+  - Add: Example usage for implemented functions
+  - List: Known limitations and platform support
+
+================================================================================
+PHASE 13: OPTIONAL ENHANCEMENTS (Nice-to-have)
+================================================================================
+
+[ ] 13.1 mimalloc integration
+  - File: src/arsenal/memory/allocators/mimalloc.nim
+  - Task: Actually use mimalloc instead of Nim's allocator
+  - Benefit: Better performance for allocation-heavy code
+  - Priority: LOW (optimization only)
+
+[ ] 13.2 Forensics implementation
+  - File: src/arsenal/forensics/
+  - Status: Multiple operations stubbed
+  - Priority: LOW (depends on use case)
+
+[ ] 13.3 Binary format parsing (PE, Mach-O)
+  - File: src/arsenal/binary/formats/
+  - Status: Mostly stubbed
+  - Priority: LOW (depends on use case)
+
+[ ] 13.4 Roaring bitmap optimization
+  - File: src/arsenal/collections/roaring.nim
+  - Status: Some operations stubbed
+  - Priority: LOW
+
+================================================================================
+TASK DEPENDENCY GRAPH
+================================================================================
+
+PHASE 1 (Vendor setup) → All other phases depend on this
+    ↓
+PHASE 2 (Binding verification) → Essential before implementation
+    ↓
+PHASE 3 (Hashing) → Independent, can start immediately
+PHASE 4 (HTTP parsing) → Depends on phase 2
+PHASE 5 (JSON parsing) → Depends on phase 2
+PHASE 6 (Compression) → Depends on phase 2
+    ↓
+PHASE 7 (I/O backends) → Can run in parallel
+PHASE 8 (Obvious stubs) → Can run in parallel
+    ↓
+PHASE 9 (Architecture) → Separate track, depends on requirements
+PHASE 10 (Embedded) → Separate track, depends on requirements
+PHASE 11 (MSVC) → Separate track, depends on Windows requirement
+    ↓
+PHASE 12 (Testing) → Ongoing, applied to each completed phase
+PHASE 13 (Enhancements) → Last, after core implementation complete
+
+================================================================================
+PROGRESS TRACKING
+================================================================================
+
+Start Date: 2026-01-31
+Completion Target: TBD (depends on scope and resources)
+
+Status: TODO (not yet started)
+
+Completed Tasks: 0
+In Progress: 0
+Remaining: 100+
+
+Key Milestones:
+- [ ] Vendor setup complete
+- [ ] All bindings verified
+- [ ] Hashing 100% complete
+- [ ] HTTP parsing 100% complete
+- [ ] JSON parsing 100% complete
+- [ ] Compression 100% complete
+- [ ] I/O backends 100% complete
+- [ ] All tests passing
+- [ ] Documentation complete
+- [ ] Performance benchmarks validated
+
+================================================================================

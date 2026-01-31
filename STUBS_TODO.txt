@@ -1,0 +1,461 @@
+================================================================================
+ARSENAL LIBRARY - COMPREHENSIVE STUB IMPLEMENTATION TODO LIST
+================================================================================
+
+PHASE 1: CORE I/O OPERATIONS (HIGHEST PRIORITY - 10-14 hours)
+================================================================================
+
+[ ] PHASE 1.1: ASYNC SOCKET OPERATIONS (11 functions)
+    File: src/arsenal/io/socket.nim
+    Complexity: MEDIUM
+    Critical: YES - Enables entire async I/O subsystem
+    Approach: Implement according to pseudo-code in comments
+    
+    [ ] 1.1.1 newAsyncSocket() [lines 41-70]
+        Status: PARTIALLY DONE - socket creation done, needs event loop default
+        Work: Wire up default event loop if nil
+        Dependencies: EventLoop module
+        
+    [ ] 1.1.2 connect(socket, address, port) [lines 87-114]
+        Status: STUB - just discard
+        Work: 
+          1. Use getaddrinfo() to resolve address
+          2. Create sockaddr_in/sockaddr_in6
+          3. Call connect() (will block/return EINPROGRESS in non-blocking mode)
+          4. Register with event loop for write events
+          5. Yield coroutine until connected
+        Dependencies: EventLoop.addWrite()
+        Research: Coroutine integration with event loop
+        
+    [ ] 1.1.3 bindAddr(socket, address, port) [lines 116-123]
+        Status: STUB - just discard
+        Work:
+          1. Resolve address
+          2. Create sockaddr
+          3. Call bind() syscall
+          4. Check for errors (EADDRINUSE, etc)
+        
+    [ ] 1.1.4 listen(socket, backlog) [lines 125-131]
+        Status: STUB - just discard
+        Work: Call listen() syscall with backlog parameter
+        
+    [ ] 1.1.5 accept(socket) [lines 133-154]
+        Status: STUB - returns discard
+        Work:
+          1. Non-blocking accept() call
+          2. If EAGAIN/EWOULDBLOCK, register for read and yield
+          3. Return new AsyncSocket with accepted fd
+        Dependencies: EventLoop.addRead()
+        Research: Coroutine yielding mechanism
+        
+    [ ] 1.1.6 read(socket, buffer) [lines 160-184]
+        Status: STUB - just discard
+        Work:
+          1. recv() syscall with non-blocking semantics
+          2. Handle EAGAIN/EWOULDBLOCK by registering for read
+          3. Yield until readable
+          4. Return bytes read
+        Dependencies: EventLoop.addRead()
+        
+    [ ] 1.1.7 write(socket, buffer) [lines 186-211]
+        Status: STUB - just discard
+        Work: Similar to read() but with send() and write events
+        Dependencies: EventLoop.addWrite()
+        
+    [ ] 1.1.8 read(socket, size) [lines 213-221]
+        Status: STUB - just discard
+        Work: Variant of read() that allocates buffer internally
+        
+    [ ] 1.1.9 write(socket, data: string) [lines 223-231]
+        Status: STUB - just discard
+        Work: Variant of write() for string data
+        
+    [ ] 1.1.10 Socket options [lines 233-263]
+        setNoDelay() - TCP_NODELAY
+        setReuseAddr() - SO_REUSEADDR
+        setKeepAlive() - SO_KEEPALIVE
+        getLocalAddr() - getsockname()
+        getRemoteAddr() - getpeername()
+        Work: Implement using setsockopt()/getsockopt()
+
+
+[ ] PHASE 1.2: KQUEUE BACKEND (4 functions)
+    File: src/arsenal/io/backends/kqueue.nim
+    Platform: BSD/macOS only
+    Complexity: MEDIUM
+    Critical: YES - Event backend for async I/O
+    
+    [ ] 1.2.1 addRead(backend, fd, data) [lines 100-131]
+        Status: STUB - just discard
+        Work:
+          1. Create kevent structure
+          2. EV_SET with EVFILT_READ, EV_ADD|EV_CLEAR flags
+          3. Call kevent() to register
+        
+    [ ] 1.2.2 addWrite(backend, fd, data) [lines 133-145]
+        Status: STUB - just discard
+        Work: Similar to addRead but with EVFILT_WRITE
+        
+    [ ] 1.2.3 removeFd(backend, fd, filter) [lines 147-159]
+        Status: STUB - just discard
+        Work:
+          1. Create kevent with EV_DELETE flag
+          2. Call kevent() to unregister
+          3. Ignore errors (fd might be closed)
+        
+    [ ] 1.2.4 wait(backend, timeoutMs) [lines 161-190]
+        Status: STUB - returns @[]
+        Work:
+          1. Convert timeoutMs to Timespec (or nil for infinite)
+          2. Call kevent() to wait for events
+          3. Return array of completed Kevent structures
+
+
+[ ] PHASE 1.3: IOCP BACKEND (4 functions)
+    File: src/arsenal/io/backends/iocp.nim
+    Platform: Windows only
+    Complexity: MEDIUM
+    Critical: YES - Event backend for async I/O on Windows
+    Research: IOCP (I/O Completion Ports) API, thread pool integration
+    
+    [ ] 1.3.1 associateHandle(backend, handle) [lines 149-170]
+        Status: STUB - just discard
+        Work:
+          1. Create/get thread pool (if needed)
+          2. Call CreateThreadpoolIo (or equivalent)
+          3. Call StartThreadpoolIo to enable notifications
+        
+    [ ] 1.3.2 post(backend, packet) [lines 172-187]
+        Status: STUB - just discard
+        Work:
+          1. Call PostQueuedCompletionStatus()
+          2. Used for custom (non-I/O) completion packets
+        
+    [ ] 1.3.3 wait(backend, timeoutMs) [lines 189-210]
+        Status: STUB - returns @[]
+        Work:
+          1. Call GetQueuedCompletionStatus()
+          2. Convert timeout (INFINITE vs milliseconds)
+          3. Return array of completion packets
+        
+    [ ] 1.3.4 File association (TBD)
+        Status: Not yet tracked
+        Work: Add helper for associating file handles with IOCP
+        NOTE: May need separate functions for socket vs file handles
+
+
+================================================================================
+PHASE 2: EMBEDDED SYSTEMS (8-12 hours)
+================================================================================
+
+[ ] PHASE 2.1: RTOS SCHEDULER CORE (6 functions)
+    File: src/arsenal/embedded/rtos.nim
+    Complexity: HIGH (assembly required)
+    Critical: YES for embedded systems
+    
+    [ ] 2.1.1 contextSwitch(sched, fromTask, toTask) [lines 190-224]
+        Status: STUB - just discard
+        Complexity: HIGH - REQUIRES ASSEMBLY
+        Work: Platform-specific context save/restore
+        
+        When Nim >= 2.0, use nimsimd or inline assembly
+        Current approach: {.emit:} with inline assembly
+        
+        Platforms needed:
+        [ ] 2.1.1a x86_64 implementation
+            Save: RBP, RBX, R12-R15, RSP
+            Load: same registers from new task
+            
+        [ ] 2.1.1b ARM64 implementation
+            Save: FP, LR, X19-X28, SP
+            Load: same registers from new task
+            
+        [ ] 2.1.1c x86 (32-bit) implementation
+            Save: EBP, EBX, ESI, EDI, ESP
+            Load: same registers
+            
+        [ ] 2.1.1d ARM (32-bit) implementation
+            Save: R4-R11, SP, LR
+            Load: same registers
+            
+        [ ] 2.1.1e RISC-V implementation
+            Save: S0-S11, SP
+            Load: same registers
+        
+        Research: Stack alignment, callee-saved registers per ABI
+        Escalation: OPUS - Review assembly for correctness
+        
+    [ ] 2.1.2 yield(sched) [lines 226-243]
+        Status: STUB - just discard
+        Complexity: MEDIUM - Can be Nim once contextSwitch done
+        Work:
+          1. Mark current task as ready
+          2. Call schedule() to find next task
+          3. If different task, call contextSwitch()
+        Dependencies: contextSwitch()
+        
+    [ ] 2.1.3 run(sched) [lines 245-271]
+        Status: STUB - just discard
+        Complexity: MEDIUM
+        Work:
+          1. Cooperative scheduler loop
+          2. Find next ready task
+          3. On ARM, emit WFI (Wait For Interrupt) if idle
+          4. Mark task as running, call its function
+          5. Mark as terminated when done
+        
+    [ ] 2.1.4 addTask(sched, fn, stackSize) [lines 86-128]
+        Status: PARTIALLY DONE - stackBase is nil
+        Complexity: MEDIUM
+        Work:
+          1. Allocate stack using malloc/galloc (or use arena)
+          2. Set stackBase = allocated pointer
+          3. Initialize SP to top of stack (stack grows down on most archs)
+          4. Initialize LR/PC to point to task function
+          5. Initialize callee-saved registers to 0
+        Note: Stack layout varies by platform ABI
+        
+    [ ] 2.1.5 Semaphore.wait(sem) [lines 295-320]
+        Status: STUB - just discard
+        Complexity: LOW
+        Work:
+          1. Decrement counter
+          2. If < 0, add current task to wait queue
+          3. Yield to scheduler
+        
+    [ ] 2.1.6 Semaphore.signal(sem) [lines 322-337]
+        Status: STUB - just discard
+        Complexity: LOW
+        Work:
+          1. Increment counter
+          2. If any tasks waiting, wake one (move to ready queue)
+
+
+[ ] PHASE 2.2: EMBEDDED HAL - GPIO/UART
+    File: src/arsenal/embedded/hal.nim
+    Complexity: MEDIUM (per-platform)
+    Status: Currently marked with {.error} pragmas
+    
+    [ ] 2.2.1 RP2040 GPIO Implementation
+        Target: Raspberry Pi Pico
+        Registers: GPIOx_CTRL, PADS_BANK0
+        
+        [ ] 2.2.1a GPIO.setMode(pin, mode) [line ~259]
+            Work: Set FUNCSEL in GPIOx_CTRL
+            
+        [ ] 2.2.1b GPIO.write(pin, state) [line ~303]
+            Work: Set GPIO_OUT register bit
+            
+        [ ] 2.2.1c GPIO.read(pin) [line ~343]
+            Work: Read GPIO_IN register bit
+            
+        [ ] 2.2.1d GPIO.toggle(pin) [line ~380]
+            Work: XOR GPIO_OUT register bit
+    
+    [ ] 2.2.2 RP2040 UART Implementation
+        Target: Raspberry Pi Pico UART blocks
+        
+        [ ] 2.2.2a UART.write() [line ~536]
+            Work: Write to UARTDR, check UARTFR for ready
+            
+        [ ] 2.2.2b UART.read() [line ~571]
+            Work: Read from UARTDR, check UARTFR for empty
+            
+        [ ] 2.2.2c UART.available() [line ~594]
+            Work: Check UARTFR.RXFE bit
+    
+    [ ] 2.2.3 ARM64 Generic GPIO (if applicable)
+        Note: Generic GPIO framework exists
+        Work: Provide platform-independent MMIO base template
+    
+    [ ] 2.2.4 STM32 Support (Optional)
+        Note: Can be added later
+        Platforms: STM32F4, STM32L4, etc
+
+
+================================================================================
+PHASE 3: UTILITY IMPLEMENTATIONS (4-6 hours)
+================================================================================
+
+[ ] PHASE 3.1: BINARY FORMAT PARSING (3 stubs)
+    Complexity: MEDIUM
+    Priority: LOW-MEDIUM
+    
+    [ ] 3.1.1 PE.parseImports() [src/arsenal/binary/formats/pe.nim:447]
+        Status: STUB - marked "simplified - would need full implementation"
+        Work: Parse import directory, iterate DLL imports
+        Depends on: Already have binary reading infrastructure
+        
+    [ ] 3.1.2 PE.parseExports() [src/arsenal/binary/formats/pe.nim:455]
+        Status: STUB - marked "simplified - would need full implementation"
+        Work: Parse export directory, iterate exported functions
+        
+    [ ] 3.1.3 MachO unhandled load commands [src/arsenal/binary/formats/macho.nim:429]
+        Status: STUB - just discard
+        Work: Add handler for additional Mach-O load command types
+
+
+[ ] PHASE 3.2: HASHING IMPLEMENTATION
+    File: src/arsenal/hashing/hasher.nim
+    Complexity: HIGH (algorithm)
+    Priority: LOW
+    
+    [ ] 3.2.1 wyhash implementation [lines 351-365]
+        Status: STUB - uses naive XOR instead of real wyhash
+        Current: Simple XOR (not cryptographically sound)
+        Work: Implement actual wyhash (Lemire & Kline)
+        Algorithm:
+          1. Load 64-bit words from input
+          2. Multiply with secret constants
+          3. XOR and fold results
+        Research: wyhash paper, reference implementation
+        Notes: Wyhash is 64-bit only, fast hash function
+        
+    [ ] 3.2.2 Finalize hash state [line 311]
+        Status: STUB - just discard
+        Work: Implement final mix/fold of hash state
+
+
+[ ] PHASE 3.3: FIXED-POINT MATH
+    File: src/arsenal/numeric/fixed.nim
+    Complexity: LOW
+    Priority: LOW
+    
+    [ ] 3.3.1 sqrtFixed() [line 164]
+        Status: STUB - "Implement via LUT or Taylor series"
+        Options:
+          [ ] 3.3.1a Lookup table approach (fast, fixed precision)
+          [ ] 3.3.1b Newton-Raphson approximation (adaptive precision)
+          [ ] 3.3.1c Bit manipulation method (fast, standard)
+        Research: Choose approach based on use case
+        Estimated: 0.5-1 hour
+
+
+================================================================================
+PHASE 4: CLEANUP & DEPRECATION (1-2 hours)
+================================================================================
+
+[ ] PHASE 4.1: DEPRECATED MODULES
+    
+    [ ] 4.1.1 Remove SimdJSON deprecation notice or delete module
+        File: src/arsenal/parsing/parsers/simdjson.nim
+        Status: Deprecated in favor of yyjson_binding
+        Work: Decide - keep as deprecated notice or delete entirely
+        Decision: DELETE (no longer needed, yyjson_binding is complete)
+        
+    [ ] 4.1.2 Update documentation/imports in parser.nim
+        File: src/arsenal/parsing/parser.nim
+        Work: Remove references to simdjson, point to yyjson_binding
+
+
+[ ] PHASE 4.2: ERROR HANDLING DISCARDS
+    Priority: LOW
+    Complexity: LOW
+    Distributed across: 15+ locations
+    Work: Replace fallback `discard` with proper error handling
+    Note: Can be addressed incrementally, not blocking
+
+
+[ ] PHASE 4.3: DOCUMENTATION UPDATES
+    
+    [ ] 4.3.1 Update SIMD optimization documentation
+        Work: Document current scalar + unrolling approach
+              Add notes on future nimsimd integration pathway
+        
+    [ ] 4.3.2 Add stub implementation guide
+        Work: Create guide for implementing remaining stubs
+        
+    [ ] 4.3.3 Add platform-specific notes
+        Work: Document which modules require which platforms
+
+
+================================================================================
+RESEARCH & ESCALATION TASKS
+================================================================================
+
+[ ] R1: Coroutine Integration Study
+    Topic: How to integrate async socket operations with coroutines
+    Status: BLOCKED - Need to understand EventLoop.addRead/addWrite pattern
+    Escalation: OPUS - If complexity is high, escalate for architecture review
+    Notes: Most critical blocker for Phase 1.1
+    
+[ ] R2: RTOS Assembly Verification
+    Topic: Verify contextSwitch assembly for multiple platforms
+    Status: PENDING - Need to implement before verification
+    Escalation: OPUS - Code review of assembly implementations
+    Notes: Safety critical - incorrect context switching breaks scheduling
+    
+[ ] R3: IOCP Windows API Deep Dive
+    Topic: Understand I/O Completion Ports architecture
+    Status: PENDING
+    Escalation: If complexity > expected, use OPUS
+    Research materials: Windows documentation, existing Nim examples
+    
+[ ] R4: wyhash Algorithm Study
+    Topic: Study wyhash paper and implement correctly
+    Status: PENDING
+    Research: Lemire & Kline paper, reference implementations
+
+
+================================================================================
+IMPLEMENTATION STRATEGY & NOTES
+================================================================================
+
+APPROACH 1: ASSEMBLY IN NIM
+    Use: {.emit:} pragma with inline assembly
+    Syntax: Nim passes variables to inline asm via backtick substitution
+    Platforms: x86_64, ARM64, x86, ARM, RISC-V
+    Benefits: Single code path for all platforms
+    Risk: Assembly correctness must be verified carefully
+
+APPROACH 2: WHEN CLAUSES FOR PLATFORM DIFFERENTIATION
+    Use: when defined(linux), when defined(windows), etc.
+    Sockets: Already partially using this (fcntl vs ioctlsocket)
+    Extend: For kqueue (BSD only), IOCP (Windows only), GPIO (per-MCU)
+
+APPROACH 3: REFACTOR FOR SIMPLICITY
+    Philosophy: Keep coroutine integration simple
+    Avoid: Complex macros, intricate callback chains
+    Prefer: Explicit yield points, clear state management
+    NOTE: If coroutine integration becomes complex, escalate to OPUS
+          before implementing further
+
+ESCALATION CRITERIA:
+    1. Coroutine integration more complex than expected
+    2. Assembly verification needed for correctness
+    3. Platform-specific behaviors clash with design
+    4. Async I/O error handling edge cases unclear
+
+
+================================================================================
+TESTING STRATEGY (Not yet detailed)
+================================================================================
+
+Tests needed for each stub implementation:
+  - Unit tests for individual functions
+  - Integration tests for full async pipeline
+  - Platform-specific tests (kqueue, IOCP)
+  - Embedded tests (RTOS scheduler, HAL)
+
+Note: Test structure TBD based on existing test framework
+
+
+================================================================================
+SUMMARY
+================================================================================
+
+Total Stubs: 69+
+Total Estimated Effort: 23-34 hours
+
+Phase 1 (Core I/O):      10-14 hours  (CRITICAL)
+Phase 2 (Embedded):       8-12 hours  (HIGH)
+Phase 3 (Utilities):      4-6 hours   (MEDIUM)
+Phase 4 (Cleanup):        1-2 hours   (LOW)
+Research/Escalation:      TBD         (Parallel)
+
+Next Steps:
+1. Start with Phase 1.1 (socket operations) - highest impact
+2. In parallel, start research on coroutine integration (R1)
+3. Escalate assembly/complex items to OPUS as needed
+4. Use "TODO ESCALATE" markers prominently in code for Opus review
+

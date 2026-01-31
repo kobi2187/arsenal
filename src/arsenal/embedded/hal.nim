@@ -216,8 +216,44 @@ proc setMode*(port: GpioPort, pin: int, mode: PinMode) =
 
   elif defined(rp2040):
     # RP2040: Function select via GPIO_CTRL register
-    # TODO: Implement RP2040-specific configuration
-    discard
+    # GPIO_CTRL register is at GPIO_BASE + 0x04 + (pin * 8)
+    const GPIO_CTRL_OFFSET_BASE = 0x04
+    const GPIO_CTRL_SIZE_PER_PIN = 8
+
+    let gpioCtrlReg = GPIO_BASE + GPIO_CTRL_OFFSET_BASE + (pin.uint * GPIO_CTRL_SIZE_PER_PIN)
+
+    # Mode mapping for RP2040:
+    # 0-5: GPIO functions (SIO for GPIO mode, others for peripherals)
+    # SIO = 5 for GPIO mode
+    let funcSel = case mode
+      of modeInput, modeOutput: 5'u32      # SIO (GPIO mode)
+      of modeInputPullup: 5'u32             # GPIO + pull-up (configured via PAD_CTRL)
+      of modeInputPulldown: 5'u32           # GPIO + pull-down (configured via PAD_CTRL)
+      of modeAnalog: 0'u32                  # GPIO_FUNC0
+      of modeAlternate: 0'u32               # Would need specific func value
+
+    volatileStore(gpioCtrlReg, funcSel)
+
+    # Configure pad (pull-up/down) if needed
+    if mode in {modeInputPullup, modeInputPulldown}:
+      const PADS_GPIO_BASE = 0x4001c000'u
+      const PADS_GPIO_OFFSET = 4'u
+      const PADS_CTRL_OFFSET_BASE = 0x04
+      const PADS_CTRL_SIZE_PER_PIN = 4
+
+      let padCtrlReg = PADS_GPIO_BASE + PADS_CTRL_OFFSET_BASE + (pin.uint * PADS_CTRL_SIZE_PER_PIN)
+      var padCtrl = volatileLoad[uint32](padCtrlReg)
+
+      # Clear existing pull bits
+      padCtrl = padCtrl and 0xFFFFFFCF'u32  # Clear bits 4-5
+
+      # Set pull bits: bit 4 = pull-up, bit 5 = pull-down
+      if mode == modeInputPullup:
+        padCtrl = padCtrl or (1'u32 shl 4)
+      else:
+        padCtrl = padCtrl or (1'u32 shl 5)
+
+      volatileStore(padCtrlReg, padCtrl)
 
   else:
     {.error: "GPIO setMode not implemented for this platform".}
@@ -425,9 +461,40 @@ proc init*(uart: Uart, config: UartConfig, clockFreq: uint32) =
     volatileStore(uart.base + USART_CR1_OFFSET, cr1)
 
   elif defined(rp2040):
-    # RP2040: Different UART configuration
-    # TODO: Implement RP2040 UART init
-    discard
+    # RP2040: UART configuration via register-based interface
+    # RP2040 has UART0 and UART1
+    const
+      UART0_BASE = 0x40034000'u
+      UART1_BASE = 0x40038000'u
+
+      # UART register offsets
+      UART_UARTLCR_H_OFFSET = 0x2C  # Line control register
+      UART_UARTIBRD_OFFSET = 0x24   # Integer baud rate register
+      UART_UARTFBRD_OFFSET = 0x28   # Fractional baud rate register
+      UART_UARTCR_OFFSET = 0x30     # Control register
+      UART_UARTIFLS_OFFSET = 0x34   # Interrupt FIFO level select
+
+    # Calculate baud rate divisor (simplified)
+    # Actual formula: BAUDRATE = clk / (16 * divisor)
+    # divisor = clk / (16 * BAUDRATE)
+    let divisor = clockFreq div (16'u32 * config.baudRate.uint32)
+    let ibrd = (divisor shr 6) and 0xFFFF'u32
+    let fbrd = divisor and 0x3F'u32
+
+    volatileStore(uart.base + UART_UARTIBRD_OFFSET, ibrd)
+    volatileStore(uart.base + UART_UARTFBRD_OFFSET, fbrd)
+
+    # Line control: 8 bits, 1 stop bit, no parity
+    var lcr: uint32 = 0
+    lcr = lcr or (0b11'u32 shl 5)  # WLEN: 8 bits
+    volatileStore(uart.base + UART_UARTLCR_H_OFFSET, lcr)
+
+    # Control register: Enable UART, enable TX, enable RX
+    var cr: uint32 = 0
+    cr = cr or (1'u32)             # UARTEN: UART enable
+    cr = cr or (1'u32 shl 8)       # TXE: Transmit enable
+    cr = cr or (1'u32 shl 9)       # RXE: Receive enable
+    volatileStore(uart.base + UART_UARTCR_OFFSET, cr)
 
   else:
     {.error: "UART not implemented for this platform".}
@@ -549,28 +616,14 @@ when defined(stm32f4):
 
 proc init*(timer: HardwareTimer, prescaler: uint16, period: uint32) =
   ## Initialize timer.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## volatileStore(timer.base + TIM_PSC_OFFSET, prescaler.uint32)
-  ## volatileStore(timer.base + TIM_ARR_OFFSET, period)
-  ## ```
-
-  # Stub
-  discard
+  volatileStore(timer.base + TIM_PSC_OFFSET, prescaler.uint32)
+  volatileStore(timer.base + TIM_ARR_OFFSET, period)
 
 proc start*(timer: HardwareTimer) =
   ## Start timer.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## var cr1 = volatileLoad[uint32](timer.base + TIM_CR1_OFFSET)
-  ## cr1 = cr1 or 1'u32  # CEN bit
-  ## volatileStore(timer.base + TIM_CR1_OFFSET, cr1)
-  ## ```
-
-  # Stub
-  discard
+  var cr1 = volatileLoad[uint32](timer.base + TIM_CR1_OFFSET)
+  cr1 = cr1 or 1'u32  # CEN bit
+  volatileStore(timer.base + TIM_CR1_OFFSET, cr1)
 
 proc stop*(timer: HardwareTimer) =
   ## Stop timer.
@@ -600,20 +653,20 @@ type
 proc init*(spi: Spi, mode: SpiMode, clockDiv: int) =
   ## Initialize SPI.
   ## IMPLEMENTATION: Configure SPI mode, clock divider, enable SPI
-
-  # Stub
+  # Platform-specific implementation would configure:
+  # - SPI_CR1: mode, clock prescaler, master mode, enable
+  # - SPI_CR2: interrupt settings
   discard
 
 proc transfer*(spi: Spi, data: byte): byte =
   ## Transfer byte (full duplex).
-  ## IMPLEMENTATION:
-  ## 1. Write to data register
-  ## 2. Wait for TX complete
-  ## 3. Read from data register
+  ## Placeholder implementation - would require platform-specific registers
+  ## Actual implementation:
+  ## 1. Write to SPI_DR (data register)
+  ## 2. Wait for RXNE (RX not empty) flag
+  ## 3. Read from SPI_DR
   ## 4. Return received byte
-
-  # Stub
-  0
+  0'u8
 
 # =============================================================================
 # Delay Functions

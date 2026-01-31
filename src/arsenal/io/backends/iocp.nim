@@ -97,38 +97,34 @@ const
 
 proc initIocp*(maxEntries: int = 1024): IocpBackend =
   ## Initialize IOCP backend.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result.iocp = CreateIoCompletionPort(
-  ##   INVALID_HANDLE_VALUE,  # Create new port
-  ##   cast[Handle](nil),      # No existing port
-  ##   0,                      # No completion key
-  ##   0                       # Use number of processors
-  ## )
-  ##
-  ## if result.iocp == cast[Handle](nil):
-  ##   raise newException(OSError, "CreateIoCompletionPort failed")
-  ##
-  ## result.entries = newSeq[OverlappedEntry](maxEntries)
-  ## result.maxEntries = maxEntries
-  ## ```
+  ## Creates a new I/O Completion Port for async I/O operations.
 
   result.maxEntries = maxEntries
   result.entries = newSeq[OverlappedEntry](maxEntries)
-  # TODO: Create IOCP
+
+  # Create a new IOCP (INVALID_HANDLE_VALUE means create new, not associate)
+  result.iocp = CreateIoCompletionPort(
+    INVALID_HANDLE_VALUE,   # Create new port (not associating with existing handle)
+    cast[Handle](nil),      # No existing port to associate with
+    0,                      # No completion key for the port itself
+    0                       # Use default: number of processors
+  )
+
+  if result.iocp == cast[Handle](nil):
+    raise newException(OSError, "CreateIoCompletionPort failed")
 
 proc destroyIocp*(backend: var IocpBackend) =
   ## Clean up IOCP backend.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if backend.iocp != cast[Handle](nil):
-  ##   discard CloseHandle(backend.iocp)
-  ##   backend.iocp = cast[Handle](nil)
-  ## ```
+  ## Closes the completion port and clears event buffer.
 
-  discard
+  if backend.iocp != cast[Handle](nil):
+    # Close the IOCP handle (imports CloseHandle via windows.h)
+    {.emit: """
+      CloseHandle(`backend`.iocp);
+    """.}
+    backend.iocp = cast[Handle](nil)
+
+  backend.entries.setLen(0)
 
 proc associateHandle*(backend: var IocpBackend, handle: Handle, key: UlongPtr) =
   ## Associate a socket/file handle with the IOCP.

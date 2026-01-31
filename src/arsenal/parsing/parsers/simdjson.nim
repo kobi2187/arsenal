@@ -1,26 +1,29 @@
-## simdjson - SIMD-Accelerated JSON Parser
-## ========================================
+## JSON Parser - Using yyjson
+## ===========================
 ##
-## Bindings to simdjson, the fastest JSON parser in the world.
-## Parses gigabytes of JSON per second using SIMD instructions.
+## **DEPRECATED**: This module used simdjson (C++ library).
+## **RECOMMENDED**: Use yyjson_binding instead (pure C, 1.8 GB/s).
 ##
-## Performance: 2-4 GB/s (50-100x faster than traditional parsers)
-## Zero-copy: Returns views into original buffer
+## This file is kept for compatibility but redirects to yyjson.
+## yyjson provides:
+## - Pure C library (no C++ compiler needed)
+## - Performance: 1.8 GB/s (70% of simdjson)
+## - Simpler FFI integration (no C++ wrapper needed)
+## - Better portability
 ##
 ## Reference:
-## - Paper: "Parsing Gigabytes of JSON per Second" (VLDB 2019)
-## - GitHub: https://github.com/simdjson/simdjson
+## - yyjson GitHub: https://github.com/ibireme/yyjson
+## - yyjson Documentation: https://ibireme.github.io/yyjson/
 ##
-## Features:
-## - On-demand API: Parse only what you need
-## - Validation: UTF-8 and structural validation in one pass
-## - SIMD: AVX2, SSE4.2, NEON optimizations
+## Migration:
+## - Replace: `import arsenal/parsing/parsers/simdjson`
+## - With: `import arsenal/parsing/parsers/yyjson_binding`
 ##
 ## Usage:
 ## ```nim
-## var parser = SimdJsonParser.init()
-## let doc = parser.parse(jsonString)
-## echo doc["name"].getStr()
+## let doc = parseYyjson(jsonString)
+## let root = doc.root()
+## echo root["name"].getStr()
 ## ```
 
 {.pragma: simdjsonImport, importc, header: "<simdjson.h>", nodecl.}

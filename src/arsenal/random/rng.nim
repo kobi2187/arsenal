@@ -71,6 +71,8 @@ type
     state: uint64
     inc: uint64  # Stream selector (must be odd)
 
+proc next*(rng: var Pcg32): uint32
+
 proc initPcg32*(seed: uint64 = 0, stream: uint64 = 1): Pcg32 =
   ## Initialize PCG32.
   ## stream: Stream selector for parallel RNG (must be odd)
@@ -87,7 +89,7 @@ proc initPcg32*(seed: uint64 = 0, stream: uint64 = 1): Pcg32 =
   result.state = 0
   result.inc = (stream shl 1) or 1
   discard result.next()
-  result.state += if seed == 0: getTime().toUnix.uint64 else: seed
+  result.state += (if seed == 0: getTime().toUnix.uint64 else: seed)
   discard result.next()
 
 proc next*(rng: var Pcg32): uint32 =

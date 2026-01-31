@@ -260,7 +260,7 @@ proc used*(a: BumpAllocator): int {.inline.} =
   ## Bytes used so far.
   a.offset
 
-proc `=destroy`*(a: BumpAllocator) =
+proc `=destroy`(a: var BumpAllocator) =
   ## Free the buffer if we own it.
   if a.owned and a.buffer != nil:
     dealloc(a.buffer)
@@ -368,7 +368,7 @@ proc available*[T](p: PoolAllocator[T]): int {.inline.} =
   ## Number of free slots.
   p.capacity - p.allocated
 
-proc `=destroy`*[T](p: PoolAllocator[T]) =
+proc `=destroy`[T](p: var PoolAllocator[T]) =
   if p.buffer != nil:
     dealloc(p.buffer)
 

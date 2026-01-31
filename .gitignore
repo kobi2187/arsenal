@@ -35,3 +35,10 @@ tests/test_*
 # Benchmarks
 benchmarks/results/
 *.bench
+
+# Vendor libraries (cloned from external repos)
+# Keep VENDOR_LIBRARIES.md for documentation
+vendor/picohttpparser/
+vendor/simdjson/
+vendor/xxhash/
+vendor/zstd/

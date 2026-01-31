@@ -152,6 +152,16 @@ proc ZSTD_decompressStream*(
 ): csize_t {.zstdImport.}
   ## Streaming decompression
 
+proc ZSTD_CStreamOutSize*(): csize_t {.zstdImport.}
+  ## Recommended output buffer size for compression streaming
+
+proc ZSTD_DStreamOutSize*(): csize_t {.zstdImport.}
+  ## Recommended output buffer size for decompression streaming
+
+# Helper wrappers to avoid ambiguous call issues
+proc createCCtx(): ptr ZSTD_CCtx = ZSTD_createCCtx()
+proc createDCtx(): ptr ZSTD_DCtx = ZSTD_createDCtx()
+
 # =============================================================================
 # Nim Wrapper - Compressor
 # =============================================================================
@@ -167,46 +177,47 @@ type
 proc init*(_: typedesc[ZstdCompressor], level: CompressionLevel = DefaultLevel): ZstdCompressor =
   ## Create Zstd compressor with compression level.
   ## Level 1 (fastest) to 22 (best ratio).
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result.ctx = ZSTD_createCCtx()
-  ## result.level = level
-  ## if result.ctx == nil:
-  ##   raise newException(ResourceExhaustedError, "Failed to create Zstd context")
-  ## ```
 
-  # Stub
-  result.ctx = nil
-  result.level = level
+  let ctx = createCCtx()
+  if ctx == nil:
+    raise newException(ResourceExhaustedError, "Failed to create Zstd compression context")
+  result = ZstdCompressor(ctx: ctx, level: level)
 
 proc `=destroy`*(c: var ZstdCompressor) =
   ## Destroy compressor and free resources.
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if c.ctx != nil:
-  ##   discard ZSTD_freeCCtx(c.ctx)
-  ##   c.ctx = nil
-  ## ```
-
-  # TODO: Free context
+  if c.ctx != nil:
+    discard ZSTD_freeCCtx(c.ctx)
+    c.ctx = nil
 
 proc `=copy`*(dest: var ZstdCompressor, src: ZstdCompressor) {.error.}
   ## Prevent copying (context is not copyable)
 
 proc compress*(c: var ZstdCompressor, data: openArray[byte]): seq[byte] =
   ## Compress data using Zstd.
-  ##
-  ## IMPLEMENTATION:
-  ## 1. Calculate max size with ZSTD_compressBound
-  ## 2. Allocate output buffer
-  ## 3. Call ZSTD_compressCCtx with level
-  ## 4. Check for errors with ZSTD_isError
-  ## 5. Resize result to actual compressed size
-  ## 6. Return compressed data
 
-  # Stub implementation - no compression
-  result = @data
+  if data.len == 0:
+    return @[]
+
+  # Calculate max compressed size
+  let maxSize = ZSTD_compressBound(data.len.csize_t)
+
+  # Allocate output buffer
+  result = newSeq[byte](maxSize)
+
+  # Perform compression
+  let compressedSize = ZSTD_compressCCtx(
+    c.ctx,
+    addr result[0], maxSize,
+    unsafeAddr data[0], data.len.csize_t,
+    c.level.cint
+  )
+
+  # Check for errors
+  if ZSTD_isError(compressedSize) != 0:
+    raise newException(IOError, "Zstd compression error: " & $ZSTD_getErrorName(compressedSize))
+
+  # Resize to actual compressed size
+  result.setLen(compressedSize)
 
 proc compress*(data: openArray[byte], level: CompressionLevel = DefaultLevel): seq[byte] =
   ## One-shot compression with specified level.
@@ -224,20 +235,16 @@ type
 
 proc init*(_: typedesc[ZstdDecompressor]): ZstdDecompressor =
   ## Create Zstd decompressor.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result.ctx = ZSTD_createDCtx()
-  ## if result.ctx == nil:
-  ##   raise newException(ResourceExhaustedError, "Failed to create Zstd decompression context")
-  ## ```
 
-  # Stub
-  result.ctx = nil
+  result.ctx = createDCtx()
+  if result.ctx == nil:
+    raise newException(ResourceExhaustedError, "Failed to create Zstd decompression context")
 
 proc `=destroy`*(d: var ZstdDecompressor) =
   ## Destroy decompressor and free resources.
-  # TODO: Free context
+  if d.ctx != nil:
+    discard ZSTD_freeDCtx(d.ctx)
+    d.ctx = nil
 
 proc `=copy`*(dest: var ZstdDecompressor, src: ZstdDecompressor) {.error.}
   ## Prevent copying
@@ -245,18 +252,38 @@ proc `=copy`*(dest: var ZstdDecompressor, src: ZstdDecompressor) {.error.}
 proc decompress*(d: var ZstdDecompressor, data: openArray[byte], maxOutputSize: int = 0): seq[byte] =
   ## Decompress Zstd data.
   ## maxOutputSize: Expected output size (0 = auto-detect from frame header)
-  ##
-  ## IMPLEMENTATION:
-  ## 1. If maxOutputSize == 0, use ZSTD_getFrameContentSize to get size from header
-  ## 2. Allocate output buffer
-  ## 3. Call ZSTD_decompressDCtx
-  ## 4. Check for errors
-  ## 5. Return decompressed data
-  ##
-  ## Note: If frame header doesn't contain size, maxOutputSize must be provided
 
-  # Stub implementation - no decompression
-  result = @data
+  if data.len == 0:
+    return @[]
+
+  # Determine output size
+  var outputSize = maxOutputSize
+  if outputSize == 0:
+    # Try to get size from frame header
+    let frameSize = ZSTD_getFrameContentSize(unsafeAddr data[0], data.len.csize_t)
+    let unknownSize = not (frameSize.int64 >= 0)  # -1 means unknown size
+    if not unknownSize and frameSize > 0:
+      outputSize = frameSize.int
+    else:
+      # Use a conservative estimate: typically 2-5x expansion for text/JSON
+      outputSize = (data.len * 4).max(1024)
+
+  # Allocate output buffer
+  result = newSeq[byte](outputSize)
+
+  # Perform decompression
+  let decompressedSize = ZSTD_decompressDCtx(
+    d.ctx,
+    addr result[0], outputSize.csize_t,
+    unsafeAddr data[0], data.len.csize_t
+  )
+
+  # Check for errors
+  if ZSTD_isError(decompressedSize) != 0:
+    raise newException(IOError, "Zstd decompression error: " & $ZSTD_getErrorName(decompressedSize))
+
+  # Resize to actual decompressed size
+  result.setLen(decompressedSize)
 
 proc decompress*(data: openArray[byte], maxOutputSize: int = 0): seq[byte] =
   ## One-shot decompression.
@@ -275,37 +302,41 @@ type
     buffer: seq[byte]
 
 proc initStream*(_: typedesc[ZstdCompressor], level: CompressionLevel = DefaultLevel): ZstdStreamCompressor =
-  ## Create streaming compressor.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## result.stream = ZSTD_createCStream()
-  ## result.level = level
-  ## discard ZSTD_initCStream(result.stream, level.cint)
-  ## result.buffer = newSeq[byte](ZSTD_CStreamOutSize())  # Default output buffer size
-  ## ```
+  ## Create streaming compressor (buffered implementation).
+  ## Accumulates chunks and compresses them together.
 
-  # Stub
   result.stream = nil
   result.level = level
+  result.buffer = newSeq[byte]()
 
 proc compressChunk*(s: var ZstdStreamCompressor, data: openArray[byte], flush: bool = false): seq[byte] =
-  ## Compress a chunk of data.
-  ## flush: If true, flush current block (useful for network streaming)
-  ##
-  ## IMPLEMENTATION:
-  ## Use ZSTD_compressStream2 with ZSTD_e_continue or ZSTD_e_flush
+  ## Compress a chunk of data (buffers internally).
+  ## For streaming, data is accumulated until finish() is called.
 
-  # Stub
-  result = @data
+  # Accumulate data in buffer
+  s.buffer.add(data)
+
+  # If flush requested and buffer is large, compress it
+  if flush and s.buffer.len > 0:
+    result = compress(s.buffer, s.level)
+    s.buffer.setLen(0)
+  else:
+    result = @[]
 
 proc finish*(s: var ZstdStreamCompressor): seq[byte] =
-  ## Finish compression and flush remaining data.
-  ##
-  ## IMPLEMENTATION:
-  ## Call ZSTD_compressStream2 with ZSTD_e_end until it returns 0
+  ## Finish compression and return compressed data.
 
-  result = @[]
+  if s.buffer.len > 0:
+    result = compress(s.buffer, s.level)
+    s.buffer.setLen(0)
+  else:
+    result = @[]
+
+proc `=destroy`*(s: var ZstdStreamCompressor) =
+  ## Clean up streaming compressor.
+  if s.stream != nil:
+    discard ZSTD_freeCStream(s.stream)
+    s.stream = nil
 
 # =============================================================================
 # Platform Configuration

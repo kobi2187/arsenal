@@ -93,15 +93,33 @@ proc load*[T](a: Atomic[T], order: MemoryOrder = SeqCst): T {.inline.} =
       `result` = __atomic_load_n(&`a`.value, `order`);
     """.}
   elif defined(vcc):
-    # TODO: Implement proper MSVC intrinsics for Windows
-    # Should use:
-    # - InterlockedCompareExchange with same value for SeqCst
-    # - _InterlockedCompareExchange_acq for Acquire
-    # - Simple volatile read for Relaxed (on x86)
-    # See: https://docs.microsoft.com/en-us/cpp/intrinsics/compiler-intrinsics
-    {.emit: """
-      `result` = *((volatile `T`*)&`a`.value);
-    """.}
+    # Windows MSVC intrinsics
+    # For x86/x86_64: all loads are naturally Acquire
+    # Relaxed: simple volatile read
+    # SeqCst: volatile read + compiler barrier
+    case order
+    of Relaxed:
+      {.emit: """
+        `result` = *((volatile `T`*)&`a`.value);
+      """.}
+    of Acquire, AcqRel, SeqCst:
+      # Use InterlockedCompareExchange as a load barrier (read same value)
+      when T == int32:
+        {.emit: """
+          `result` = _InterlockedCompareExchange((long volatile*)&`a`.value, 0, 0);
+        """.}
+      elif T == int64:
+        {.emit: """
+          `result` = _InterlockedCompareExchange64((long long volatile*)&`a`.value, 0, 0);
+        """.}
+      else:
+        {.emit: """
+          `result` = *((volatile `T`*)&`a`.value);
+        """.}
+    else:
+      {.emit: """
+        `result` = *((volatile `T`*)&`a`.value);
+      """.}
   else:
     # Fallback: volatile read (not fully atomic on all platforms)
     {.emit: """
@@ -115,14 +133,28 @@ proc store*[T](a: var Atomic[T], val: T, order: MemoryOrder = SeqCst) {.inline.}
       __atomic_store_n(&`a`->value, `val`, `order`);
     """.}
   elif defined(vcc):
-    # TODO: Implement proper MSVC intrinsics for Windows
-    # Should use:
-    # - Relaxed/Release: Simple MOV (x86 stores are naturally Release)
-    # - SeqCst: XCHG or MOV + MFENCE
-    # - Use _InterlockedExchange for SeqCst on x86
-    {.emit: """
-      *((volatile `T`*)&`a`->value) = `val`;
-    """.}
+    # Windows MSVC: Use _InterlockedExchange for atomicity
+    # MSVC intrinsics: all provide SeqCst semantics
+    case order
+    of Relaxed:
+      # Simple volatile write (no barrier needed on x86/x64)
+      {.emit: """
+        *((volatile `T`*)&`a`.value) = `val`;
+      """.}
+    else:
+      # Use _InterlockedExchange for proper atomicity
+      when T == int32 or T == uint32:
+        {.emit: """
+          _InterlockedExchange((long volatile*)&`a`.value, (long)`val`);
+        """.}
+      elif T == int64 or T == uint64:
+        {.emit: """
+          _InterlockedExchange64((long long volatile*)&`a`.value, (long long)`val`);
+        """.}
+      else:
+        {.emit: """
+          *((volatile `T`*)&`a`.value) = `val`;
+        """.}
   else:
     # Fallback: volatile write (not fully atomic)
     {.emit: """
@@ -143,11 +175,19 @@ proc exchange*[T](a: var Atomic[T], val: T, order: MemoryOrder = SeqCst): T {.in
       `result` = __atomic_exchange_n(&`a`->value, `val`, `order`);
     """.}
   elif defined(vcc):
-    # TODO: Implement proper MSVC intrinsics for Windows
-    # Should use _InterlockedExchange family
-    # WARNING: This fallback is NOT atomic!
-    result = a.value
-    a.value = val
+    # Windows MSVC: Use _InterlockedExchange intrinsic
+    when T == int32 or T == uint32:
+      {.emit: """
+        `result` = _InterlockedExchange((long volatile*)&`a`.value, (long)`val`);
+      """.}
+    elif T == int64 or T == uint64:
+      {.emit: """
+        `result` = _InterlockedExchange64((long long volatile*)&`a`.value, (long long)`val`);
+      """.}
+    else:
+      # Fallback for other types
+      result = a.value
+      a.value = val
   else:
     # Fallback: NOT atomic!
     result = a.value
@@ -179,18 +219,43 @@ proc compareExchange*[T](a: var Atomic[T], expected: var T, desired: T,
       );
     """.}
   elif defined(vcc):
-    # TODO: Implement proper MSVC intrinsics for Windows
-    # Should use _InterlockedCompareExchange family
-    # - _InterlockedCompareExchange for SeqCst
-    # - _InterlockedCompareExchange_acq for Acquire
-    # - _InterlockedCompareExchange_rel for Release
-    # WARNING: This fallback is NOT atomic!
-    if a.value == expected:
-      a.value = desired
-      result = true
+    # Windows MSVC: Use _InterlockedCompareExchange intrinsic
+    when T == int32 or T == uint32:
+      {.emit: """
+        long old_val = _InterlockedCompareExchange(
+          (long volatile*)&`a`.value,
+          (long)`desired`,
+          (long)`expected`
+        );
+        if (old_val == (long)`expected`) {
+          `result` = 1;
+        } else {
+          `expected` = (typeof(`expected`))old_val;
+          `result` = 0;
+        }
+      """.}
+    elif T == int64 or T == uint64:
+      {.emit: """
+        long long old_val = _InterlockedCompareExchange64(
+          (long long volatile*)&`a`.value,
+          (long long)`desired`,
+          (long long)`expected`
+        );
+        if (old_val == (long long)`expected`) {
+          `result` = 1;
+        } else {
+          `expected` = (typeof(`expected`))old_val;
+          `result` = 0;
+        }
+      """.}
     else:
-      expected = a.value
-      result = false
+      # Fallback for unsupported types
+      if a.value == expected:
+        a.value = desired
+        result = true
+      else:
+        expected = a.value
+        result = false
   else:
     # Fallback: NOT atomic!
     if a.value == expected:
@@ -218,12 +283,11 @@ proc compareExchangeWeak*[T](a: var Atomic[T], expected: var T, desired: T,
       );
     """.}
   elif defined(vcc):
-    # TODO: Same MSVC intrinsics as strong CAS (x86 doesn't differentiate)
-    # Fallback to strong version
-    compareExchange(a, expected, desired, successOrder, failureOrder)
+    # Windows x86/x64: MSVC doesn't support weak CAS, use strong
+    result = compareExchange(a, expected, desired, successOrder, failureOrder)
   else:
     # Fallback: same as strong
-    compareExchange(a, expected, desired, successOrder, failureOrder)
+    result = compareExchange(a, expected, desired, successOrder, failureOrder)
 
 # =============================================================================
 # Fetch and Modify Operations
@@ -241,11 +305,19 @@ proc fetchAdd*[T: SomeInteger](a: var Atomic[T], val: T,
       `result` = __atomic_fetch_add(&`a`->value, `val`, `order`);
     """.}
   elif defined(vcc):
-    # TODO: Implement proper MSVC intrinsics for Windows
-    # Should use _InterlockedExchangeAdd family
-    # WARNING: This fallback is NOT atomic!
-    result = a.value
-    a.value = a.value + val
+    # Windows MSVC: Use _InterlockedExchangeAdd intrinsic
+    when T == int32 or T == uint32:
+      {.emit: """
+        `result` = _InterlockedExchangeAdd((long volatile*)&`a`.value, (long)`val`);
+      """.}
+    elif T == int64 or T == uint64:
+      {.emit: """
+        `result` = _InterlockedExchangeAdd64((long long volatile*)&`a`.value, (long long)`val`);
+      """.}
+    else:
+      # Fallback for unsupported types
+      result = a.value
+      a.value = a.value + val
   else:
     # Fallback: NOT atomic!
     result = a.value
@@ -260,10 +332,19 @@ proc fetchSub*[T: SomeInteger](a: var Atomic[T], val: T,
       `result` = __atomic_fetch_sub(&`a`->value, `val`, `order`);
     """.}
   elif defined(vcc):
-    # TODO: Use _InterlockedExchangeAdd with negative value
-    # WARNING: This fallback is NOT atomic!
-    result = a.value
-    a.value = a.value - val
+    # Windows MSVC: Use _InterlockedExchangeAdd with negated value
+    when T == int32 or T == uint32:
+      {.emit: """
+        `result` = _InterlockedExchangeAdd((long volatile*)&`a`.value, -(long)`val`);
+      """.}
+    elif T == int64 or T == uint64:
+      {.emit: """
+        `result` = _InterlockedExchangeAdd64((long long volatile*)&`a`.value, -(long long)`val`);
+      """.}
+    else:
+      # Fallback for unsupported types
+      result = a.value
+      a.value = a.value - val
   else:
     # Fallback: NOT atomic!
     result = a.value
@@ -278,10 +359,19 @@ proc fetchAnd*[T: SomeInteger](a: var Atomic[T], val: T,
       `result` = __atomic_fetch_and(&`a`->value, `val`, `order`);
     """.}
   elif defined(vcc):
-    # TODO: Use _InterlockedAnd family
-    # WARNING: This fallback is NOT atomic!
-    result = a.value
-    a.value = a.value and val
+    # Windows MSVC: Use _InterlockedAnd intrinsic
+    when T == int32 or T == uint32:
+      {.emit: """
+        `result` = _InterlockedAnd((long volatile*)&`a`.value, (long)`val`);
+      """.}
+    elif T == int64 or T == uint64:
+      {.emit: """
+        `result` = _InterlockedAnd64((long long volatile*)&`a`.value, (long long)`val`);
+      """.}
+    else:
+      # Fallback for unsupported types
+      result = a.value
+      a.value = a.value and val
   else:
     # Fallback: NOT atomic!
     result = a.value
@@ -296,10 +386,19 @@ proc fetchOr*[T: SomeInteger](a: var Atomic[T], val: T,
       `result` = __atomic_fetch_or(&`a`->value, `val`, `order`);
     """.}
   elif defined(vcc):
-    # TODO: Use _InterlockedOr family
-    # WARNING: This fallback is NOT atomic!
-    result = a.value
-    a.value = a.value or val
+    # Windows MSVC: Use _InterlockedOr intrinsic
+    when T == int32 or T == uint32:
+      {.emit: """
+        `result` = _InterlockedOr((long volatile*)&`a`.value, (long)`val`);
+      """.}
+    elif T == int64 or T == uint64:
+      {.emit: """
+        `result` = _InterlockedOr64((long long volatile*)&`a`.value, (long long)`val`);
+      """.}
+    else:
+      # Fallback for unsupported types
+      result = a.value
+      a.value = a.value or val
   else:
     # Fallback: NOT atomic!
     result = a.value
@@ -314,10 +413,19 @@ proc fetchXor*[T: SomeInteger](a: var Atomic[T], val: T,
       `result` = __atomic_fetch_xor(&`a`->value, `val`, `order`);
     """.}
   elif defined(vcc):
-    # TODO: Use _InterlockedXor family
-    # WARNING: This fallback is NOT atomic!
-    result = a.value
-    a.value = a.value xor val
+    # Windows MSVC: Use _InterlockedXor intrinsic
+    when T == int32 or T == uint32:
+      {.emit: """
+        `result` = _InterlockedXor((long volatile*)&`a`.value, (long)`val`);
+      """.}
+    elif T == int64 or T == uint64:
+      {.emit: """
+        `result` = _InterlockedXor64((long long volatile*)&`a`.value, (long long)`val`);
+      """.}
+    else:
+      # Fallback for unsupported types
+      result = a.value
+      a.value = a.value xor val
   else:
     # Fallback: NOT atomic!
     result = a.value
