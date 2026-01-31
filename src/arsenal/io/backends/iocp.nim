@@ -9,7 +9,11 @@
 ## - Thread-pool integration
 ## - Completion-based (notified when I/O completes, not when ready)
 
-{.pragma: iocpImport, importc, header: "<windows.h>", stdcall.}
+# IOCP is Windows-only, these are stub definitions for non-Windows systems
+when defined(windows):
+  {.pragma: iocpImport, importc, header: "<windows.h>", stdcall.}
+else:
+  {.pragma: iocpImport.}
 
 # =============================================================================
 # Windows Types
@@ -44,12 +48,13 @@ proc CreateIoCompletionPort*(
   existingCompletionPort: Handle,
   completionKey: UlongPtr,
   numberOfConcurrentThreads: Dword
-): Handle {.iocpImport.}
+): Handle {.iocpImport.} =
   ## Create or associate a handle with IOCP.
   ## fileHandle: File/socket handle, or INVALID_HANDLE_VALUE to create new port
   ## existingCompletionPort: Existing port or NULL
   ## completionKey: User data associated with handle
   ## numberOfConcurrentThreads: 0 = number of processors
+  cast[Handle](nil)
 
 proc GetQueuedCompletionStatus*(
   completionPort: Handle,
@@ -57,9 +62,10 @@ proc GetQueuedCompletionStatus*(
   lpCompletionKey: ptr UlongPtr,
   lpOverlapped: ptr ptr Overlapped,
   dwMilliseconds: Dword
-): cint {.iocpImport.}
+): cint {.iocpImport.} =
   ## Wait for I/O completion.
   ## Returns TRUE if dequeued, FALSE on timeout or error.
+  0
 
 proc GetQueuedCompletionStatusEx*(
   completionPort: Handle,
@@ -68,18 +74,20 @@ proc GetQueuedCompletionStatusEx*(
   ulNumEntriesRemoved: ptr Dword,
   dwMilliseconds: Dword,
   fAlertable: cint
-): cint {.iocpImport.}
+): cint {.iocpImport.} =
   ## Wait for multiple I/O completions (more efficient).
   ## Returns TRUE if dequeued any, FALSE on timeout or error.
+  0
 
 proc PostQueuedCompletionStatus*(
   completionPort: Handle,
   dwNumberOfBytesTransferred: Dword,
   dwCompletionKey: UlongPtr,
   lpOverlapped: ptr Overlapped
-): cint {.iocpImport.}
+): cint {.iocpImport.} =
   ## Post a custom completion to the queue.
   ## Used for waking up waiting threads.
+  0
 
 # =============================================================================
 # Backend Implementation
