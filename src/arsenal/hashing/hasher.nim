@@ -150,12 +150,8 @@ proc hash*(_: typedesc[xxHash64], data: openArray[byte],
     h = xxh64MergeRound(h, v3)
     h = xxh64MergeRound(h, v4)
 
-    # Process remaining bytes
-    p = (len shr 5) shl 5
-    var offset = p
   else:
     h = seedVal + xxh64Prime5
-    var offset = 0
 
   # Add total length
   h += len.uint64
