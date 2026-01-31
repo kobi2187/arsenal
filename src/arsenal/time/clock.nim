@@ -21,6 +21,8 @@ export monotimes
 import std/times
 export times
 
+import std/os
+
 when defined(linux) or defined(macosx):
   when defined(linux):
     import ../kernel/syscalls

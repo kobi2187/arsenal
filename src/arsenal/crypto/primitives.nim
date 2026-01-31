@@ -27,6 +27,8 @@
 
 {.pragma: sodiumImport, importc, header: "<sodium.h>".}
 
+import std/options
+
 # =============================================================================
 # Initialization
 # =============================================================================
@@ -182,7 +184,6 @@ proc encrypt*(plaintext: openArray[byte], nonce: Nonce, key: SecretKey): seq[byt
 
 proc decrypt*(ciphertext: openArray[byte], nonce: Nonce, key: SecretKey): Option[seq[byte]] =
   ## Decrypt and verify. Returns none if authentication fails.
-  import std/options
 
   if ciphertext.len < crypto_secretbox_MACBYTES:
     return none(seq[byte])
@@ -235,17 +236,17 @@ proc crypto_sign_verify_detached*(
 
 type
   PublicKey* = array[crypto_sign_PUBLICKEYBYTES, byte]
-  SecretKey* = array[crypto_sign_SECRETKEYBYTES, byte]
+  SigningKey* = array[crypto_sign_SECRETKEYBYTES, byte]
   Signature* = array[crypto_sign_BYTES, byte]
 
-proc generateKeypair*(): tuple[public: PublicKey, secret: SecretKey] =
+proc generateKeypair*(): tuple[public: PublicKey, secret: SigningKey] =
   ## Generate Ed25519 keypair.
   discard crypto_sign_keypair(
     cast[ptr byte](addr result.public[0]),
     cast[ptr byte](addr result.secret[0])
   )
 
-proc sign*(message: openArray[byte], secretKey: SecretKey): Signature =
+proc sign*(message: openArray[byte], secretKey: SigningKey): Signature =
   ## Sign message with Ed25519.
   var siglen: culonglong
   discard crypto_sign_detached(
@@ -304,10 +305,10 @@ proc deriveKey*(masterKey: array[32, byte], context: array[8, byte], id: uint64)
 proc sodium_memzero*(pnt: pointer, len: csize_t) {.sodiumImport.}
   ## Securely zero memory (prevents compiler optimization)
 
-proc sodium_mlock*(addr: pointer, len: csize_t): cint {.sodiumImport.}
+proc sodium_mlock*(`addr`: pointer, len: csize_t): cint {.sodiumImport.}
   ## Lock memory (prevent swapping to disk)
 
-proc sodium_munlock*(addr: pointer, len: csize_t): cint {.sodiumImport.}
+proc sodium_munlock*(`addr`: pointer, len: csize_t): cint {.sodiumImport.}
   ## Unlock memory
 
 proc secureZero*[T](data: var T) =

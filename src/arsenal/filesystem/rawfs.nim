@@ -149,7 +149,7 @@ when defined(linux):
     ## result = cast[int64](syscall(SYS_lseek, fd.clong, offset, whence.clong))
     ## ```
 
-    cast[int64](syscall(SYS_lseek, fd.clong, offset, whence.clong))
+    cast[int64](syscall(SYS_lseek, fd.clong, offset.clong, whence.clong))
 
 # =============================================================================
 # Directory Operations

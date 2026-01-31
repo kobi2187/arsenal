@@ -267,13 +267,13 @@ when defined(linux):
 # =============================================================================
 
 when defined(linux):
-  proc sys_write*(fd: cint, buf: pointer, count: csize_t): cssize_t =
+  proc sys_write*(fd: cint, buf: pointer, count: csize_t): clong =
     ## Write to file descriptor (raw syscall).
-    cast[cssize_t](syscall(SYS_write, fd.clong, buf, count.clong))
+    cast[clong](syscall(SYS_write, fd.clong, buf, count.clong))
 
-  proc sys_read*(fd: cint, buf: pointer, count: csize_t): cssize_t =
+  proc sys_read*(fd: cint, buf: pointer, count: csize_t): clong =
     ## Read from file descriptor.
-    cast[cssize_t](syscall(SYS_read, fd.clong, buf, count.clong))
+    cast[clong](syscall(SYS_read, fd.clong, buf, count.clong))
 
   proc sys_close*(fd: cint): cint =
     ## Close file descriptor.
@@ -289,7 +289,7 @@ when defined(linux):
     cast[cint](syscall(SYS_getpid))
 
   proc sys_mmap*(
-    addr: pointer,
+    `addr`: pointer,
     length: csize_t,
     prot: cint,
     flags: cint,
@@ -311,9 +311,9 @@ when defined(linux):
       offset
     ))
 
-  proc sys_munmap*(addr: pointer, length: csize_t): cint =
+  proc sys_munmap*(`addr`: pointer, length: csize_t): cint =
     ## Unmap memory.
-    cast[cint](syscall(SYS_munmap, addr, length.clong))
+    cast[cint](syscall(SYS_munmap, `addr`, length.clong))
 
 # =============================================================================
 # Constants (Linux)

@@ -233,9 +233,9 @@ proc vectorAdd*(dst, a, b: ptr float32, n: int) =
   var i = 0
   # SIMD loop
   while i + 4 <= n:
-    let aPtr = cast[ptr float32](cast[uint](a) + i.uint * sizeof(float32))
-    let bPtr = cast[ptr float32](cast[uint](b) + i.uint * sizeof(float32))
-    let dstPtr = cast[ptr float32](cast[uint](dst) + i.uint * sizeof(float32))
+    let aPtr = cast[ptr float32](cast[uint](a) + i.uint * sizeof(float32).uint)
+    let bPtr = cast[ptr float32](cast[uint](b) + i.uint * sizeof(float32).uint)
+    let dstPtr = cast[ptr float32](cast[uint](dst) + i.uint * sizeof(float32).uint)
 
     let va = load(aPtr)
     let vb = load(bPtr)

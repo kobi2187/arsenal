@@ -18,6 +18,9 @@
 ## echo c.toFloat()  # Convert back to float
 ## ```
 
+import std/math
+import std/options
+
 type
   Fixed16* = distinct int32
     ## Q16.16 fixed-point (16 integer bits, 16 fractional)
@@ -159,7 +162,7 @@ proc sin*(x: Fixed16): Fixed16 =
   ## ```
 
   # Stub - implement via LUT or Taylor series
-  toFixed16(toFloat(x).sin)
+  toFixed16(sin(toFloat(x)))
 
 # =============================================================================
 # Saturating Arithmetic
@@ -224,8 +227,6 @@ proc checkedAdd*(a, b: int): Option[int] =
   ##   return some(result)
   ## ```
 
-  import std/options
-
   # Portable version
   if b > 0 and a > int.high - b:
     return none(int)
@@ -235,7 +236,6 @@ proc checkedAdd*(a, b: int): Option[int] =
 
 proc checkedMul*(a, b: int): Option[int] =
   ## Multiply with overflow check.
-  import std/options
 
   if a == 0 or b == 0:
     return some(0)

@@ -37,9 +37,9 @@ type
 
   SocketDomain* = enum
     ## Address family
+    AF_UNIX = 1    ## Unix domain sockets
     AF_INET = 2    ## IPv4
     AF_INET6 = 10  ## IPv6
-    AF_UNIX = 1    ## Unix domain sockets
 
   SocketType* = enum
     ## Socket type
@@ -50,9 +50,9 @@ type
 
   SocketProtocol* = enum
     ## Protocol
+    IPPROTO_ICMP = 1
     IPPROTO_TCP = 6
     IPPROTO_UDP = 17
-    IPPROTO_ICMP = 1
     IPPROTO_RAW = 255
 
 const
@@ -68,7 +68,6 @@ const
   SO_REUSEPORT* = 15
 
   # TCP options
-  IPPROTO_TCP* = 6
   TCP_NODELAY* = 1
 
 # =============================================================================
@@ -121,37 +120,37 @@ type
 # Socket Operations
 # =============================================================================
 
-proc bind*(sockfd: cint, addr: ptr SockAddr, addrlen: cuint): cint
-  {.importc, header: "<sys/socket.h>".}
+proc `bind`*(sockfd: cint, `addr`: ptr SockAddr, addrlen: cuint): cint
+  {.importc: "bind", header: "<sys/socket.h>".}
   ## Bind socket to address
 
 proc listen*(sockfd: cint, backlog: cint): cint
   {.importc, header: "<sys/socket.h>".}
   ## Listen for connections (TCP)
 
-proc accept*(sockfd: cint, addr: ptr SockAddr, addrlen: ptr cuint): cint
-  {.importc, header: "<sys/socket.h>".}
+proc accept*(sockfd: cint, `addr`: ptr SockAddr, addrlen: ptr cuint): cint
+  {.importc: "accept", header: "<sys/socket.h>".}
   ## Accept connection (TCP)
 
-proc connect*(sockfd: cint, addr: ptr SockAddr, addrlen: cuint): cint
-  {.importc, header: "<sys/socket.h>".}
+proc connect*(sockfd: cint, `addr`: ptr SockAddr, addrlen: cuint): cint
+  {.importc: "connect", header: "<sys/socket.h>".}
   ## Connect to remote address
 
-proc send*(sockfd: cint, buf: pointer, len: csize_t, flags: cint): cssize_t
+proc send*(sockfd: cint, buf: pointer, len: csize_t, flags: cint): clong
   {.importc, header: "<sys/socket.h>".}
   ## Send data (TCP)
 
-proc recv*(sockfd: cint, buf: pointer, len: csize_t, flags: cint): cssize_t
+proc recv*(sockfd: cint, buf: pointer, len: csize_t, flags: cint): clong
   {.importc, header: "<sys/socket.h>".}
   ## Receive data (TCP)
 
 proc sendto*(sockfd: cint, buf: pointer, len: csize_t, flags: cint,
-             dest_addr: ptr SockAddr, addrlen: cuint): cssize_t
+             dest_addr: ptr SockAddr, addrlen: cuint): clong
   {.importc, header: "<sys/socket.h>".}
   ## Send datagram (UDP)
 
 proc recvfrom*(sockfd: cint, buf: pointer, len: csize_t, flags: cint,
-               src_addr: ptr SockAddr, addrlen: ptr cuint): cssize_t
+               src_addr: ptr SockAddr, addrlen: ptr cuint): clong
   {.importc, header: "<sys/socket.h>".}
   ## Receive datagram (UDP)
 
@@ -243,23 +242,23 @@ proc ipv4ToUint32*(ip: string): uint32 =
   ## result = addr.s_addr
   ## ```
 
-  var addr: InAddr
-  if inet_pton(AF_INET.cint, ip.cstring, addr result) != 1:
+  var address: InAddr
+  if inet_pton(AF_INET.cint, ip.cstring, addr address) != 1:
     raise newException(ValueError, "Invalid IPv4 address")
-  result = addr.s_addr
+  result = address.s_addr
 
 proc uint32ToIpv4*(ip: uint32): string =
   ## Convert uint32 (network byte order) to IPv4 string
   var buf: array[16, char]
-  var addr = InAddr(s_addr: ip)
-  discard inet_ntop(AF_INET.cint, addr buf[0].addr, 16)
+  var address = InAddr(s_addr: ip)
+  discard inet_ntop(AF_INET.cint, addr address, addr buf[0], 16)
   result = $cast[cstring](addr buf[0])
 
 # =============================================================================
 # High-Level Helpers
 # =============================================================================
 
-proc createTcpSocket*(nonBlocking: bool = false): cint =
+proc createTcpSocket*(nonBlocking: bool = false): SocketHandle =
   ## Create TCP socket.
   ##
   ## IMPLEMENTATION:
@@ -275,18 +274,18 @@ proc createTcpSocket*(nonBlocking: bool = false): cint =
 
   when defined(linux):
     let flags = if nonBlocking: SOCK_NONBLOCK else: 0
-    result = socket(AF_INET, SOCK_STREAM.cint or flags, IPPROTO_TCP.cint)
+    result = socket(AF_INET, SocketType(SOCK_STREAM.cint or flags), IPPROTO_TCP)
   else:
-    result = socket(AF_INET.cint, SOCK_STREAM.cint, IPPROTO_TCP.cint)
+    result = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
     if nonBlocking:
       discard setNonBlocking(result, true)
 
-proc createUdpSocket*(): cint =
+proc createUdpSocket*(): SocketHandle =
   ## Create UDP socket.
   when defined(linux):
-    socket(AF_INET, SOCK_DGRAM.cint, IPPROTO_UDP.cint)
+    socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
   else:
-    socket(AF_INET.cint, SOCK_DGRAM.cint, IPPROTO_UDP.cint)
+    socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
 
 proc makeSockAddr*(ip: string, port: uint16): SockAddrIn =
   ## Create socket address structure.

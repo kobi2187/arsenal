@@ -101,7 +101,7 @@ proc init*[T](_: typedesc[MpmcQueue[T]], capacity: int): MpmcQueue[T] =
   for i in 0..<capacity:
     result.buffer[i].sequence = Atomic[uint64].init(i.uint64)
 
-proc `=destroy`*[T](q: MpmcQueue[T]) =
+proc `=destroy`[T](q: var MpmcQueue[T]) =
   ## Free the queue's buffer.
   if q.buffer != nil:
     dealloc(q.buffer)

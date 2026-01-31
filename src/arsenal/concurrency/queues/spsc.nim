@@ -68,7 +68,7 @@ proc init*[T](_: typedesc[SpscQueue[T]], capacity: int): SpscQueue[T] =
     alloc0(capacity * sizeof(T))
   )
 
-proc `=destroy`*[T](q: SpscQueue[T]) =
+proc `=destroy`[T](q: var SpscQueue[T]) =
   ## Free the queue's buffer.
   if q.buffer != nil:
     dealloc(q.buffer)

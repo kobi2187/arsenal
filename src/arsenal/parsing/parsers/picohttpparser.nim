@@ -42,7 +42,7 @@ type
 proc phr_parse_request*(
   buf: cstring,
   len: csize_t,
-  method: ptr cstring,
+  `method`: ptr cstring,
   method_len: ptr csize_t,
   path: ptr cstring,
   path_len: ptr csize_t,

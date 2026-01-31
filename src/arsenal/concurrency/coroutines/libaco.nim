@@ -80,7 +80,9 @@ type
 # Thread-local current coroutine
 # =============================================================================
 
-var acoCurrentCo* {.importc: "aco_gtls_co", threadvar.}: ptr AcoHandle
+# aco_gtls_co is a thread-local variable in libaco.h
+# We need to access it through C, so we skip direct import
+# proc getAcoCurrentCo*(): ptr AcoHandle {.importc: "aco_gtls_co", nodecl.}
 
 # =============================================================================
 # libaco Functions (Direct Bindings)

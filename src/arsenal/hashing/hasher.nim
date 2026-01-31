@@ -24,20 +24,20 @@
 import std/hashes
 
 type
-  Hasher* = concept h, var mh
+  Hasher* = concept h
     ## Interface for hash functions.
     ## Supports both one-shot and incremental (streaming) hashing.
 
     # One-shot hashing
-    type(h).hash(openArray[byte]): uint64
-    type(h).hash(string): uint64
+    h.hash(openArray[byte]): uint64
+    h.hash(string): uint64
 
     # Incremental hashing
-    type(h).init(): type(mh)
-    mh.update(openArray[byte])
-    mh.update(string)
-    mh.finish(): uint64
-    mh.reset()
+    h.init(): auto
+    h.update(openArray[byte])
+    h.update(string)
+    h.finish(): uint64
+    h.reset()
 
   HashSeed* = distinct uint64
     ## Seed for hash functions. Use different seeds to get different hashes.
