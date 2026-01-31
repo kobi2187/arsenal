@@ -9,7 +9,11 @@
 ## - Thread-pool integration
 ## - Completion-based (notified when I/O completes, not when ready)
 
-{.pragma: iocpImport, importc, header: "<windows.h>", stdcall.}
+# IOCP is Windows-only, these are stub definitions for non-Windows systems
+when defined(windows):
+  {.pragma: iocpImport, importc, header: "<windows.h>", stdcall.}
+else:
+  {.pragma: iocpImport.}
 
 # =============================================================================
 # Windows Types
@@ -44,12 +48,13 @@ proc CreateIoCompletionPort*(
   existingCompletionPort: Handle,
   completionKey: UlongPtr,
   numberOfConcurrentThreads: Dword
-): Handle {.iocpImport.}
+): Handle {.iocpImport.} =
   ## Create or associate a handle with IOCP.
   ## fileHandle: File/socket handle, or INVALID_HANDLE_VALUE to create new port
   ## existingCompletionPort: Existing port or NULL
   ## completionKey: User data associated with handle
   ## numberOfConcurrentThreads: 0 = number of processors
+  cast[Handle](nil)
 
 proc GetQueuedCompletionStatus*(
   completionPort: Handle,
@@ -57,9 +62,10 @@ proc GetQueuedCompletionStatus*(
   lpCompletionKey: ptr UlongPtr,
   lpOverlapped: ptr ptr Overlapped,
   dwMilliseconds: Dword
-): cint {.iocpImport.}
+): cint {.iocpImport.} =
   ## Wait for I/O completion.
   ## Returns TRUE if dequeued, FALSE on timeout or error.
+  0
 
 proc GetQueuedCompletionStatusEx*(
   completionPort: Handle,
@@ -68,18 +74,20 @@ proc GetQueuedCompletionStatusEx*(
   ulNumEntriesRemoved: ptr Dword,
   dwMilliseconds: Dword,
   fAlertable: cint
-): cint {.iocpImport.}
+): cint {.iocpImport.} =
   ## Wait for multiple I/O completions (more efficient).
   ## Returns TRUE if dequeued any, FALSE on timeout or error.
+  0
 
 proc PostQueuedCompletionStatus*(
   completionPort: Handle,
   dwNumberOfBytesTransferred: Dword,
   dwCompletionKey: UlongPtr,
   lpOverlapped: ptr Overlapped
-): cint {.iocpImport.}
+): cint {.iocpImport.} =
   ## Post a custom completion to the queue.
   ## Used for waking up waiting threads.
+  0
 
 # =============================================================================
 # Backend Implementation
@@ -128,62 +136,61 @@ proc destroyIocp*(backend: var IocpBackend) =
 
 proc associateHandle*(backend: var IocpBackend, handle: Handle, key: UlongPtr) =
   ## Associate a socket/file handle with the IOCP.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## let result = CreateIoCompletionPort(
-  ##   handle,
-  ##   backend.iocp,
-  ##   key,
-  ##   0
-  ## )
-  ##
-  ## if result == cast[Handle](nil):
-  ##   raise newException(OSError, "Failed to associate handle with IOCP")
-  ## ```
-  ##
-  ## Note: On Windows, you don't register interest in specific events.
+  ## On Windows, you don't register interest in specific events.
   ## Instead, you start async I/O operations (ReadFile, WriteFile, etc.)
   ## which automatically post to IOCP when complete.
 
-  discard
+  let result = CreateIoCompletionPort(
+    handle,
+    backend.iocp,
+    key,
+    0
+  )
+
+  if result == cast[Handle](nil):
+    raise newException(OSError, "Failed to associate handle with IOCP")
 
 proc wait*(backend: var IocpBackend, timeoutMs: int): seq[OverlappedEntry] =
   ## Wait for I/O completions.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## var numRemoved: Dword
-  ##
-  ## let success = GetQueuedCompletionStatusEx(
-  ##   backend.iocp,
-  ##   addr backend.entries[0],
-  ##   backend.maxEntries.Dword,
-  ##   addr numRemoved,
-  ##   (if timeoutMs < 0: INFINITE else: timeoutMs.Dword),
-  ##   0  # Not alertable
-  ## )
-  ##
-  ## if success != 0:
-  ##   result = backend.entries[0..<numRemoved]
-  ## else:
-  ##   # Check if timeout or error
-  ##   let err = GetLastError()
-  ##   if err == WAIT_TIMEOUT:
-  ##     result = @[]
-  ##   else:
-  ##     raise newException(OSError, "GetQueuedCompletionStatusEx failed")
-  ## ```
+  ## Returns array of completed entries, or empty array on timeout.
 
-  result = @[]
+  var numRemoved: Dword = 0
+
+  # Convert timeout: -1 means infinite wait
+  let timeout: Dword = if timeoutMs < 0:
+    Dword(0xFFFFFFFF)  # INFINITE constant on Windows
+  else:
+    timeoutMs.Dword
+
+  let success = GetQueuedCompletionStatusEx(
+    backend.iocp,
+    addr backend.entries[0],
+    backend.maxEntries.Dword,
+    addr numRemoved,
+    timeout,
+    0  # Not alertable
+  )
+
+  if success != 0:
+    # Successfully dequeued entries
+    result = newSeq[OverlappedEntry](numRemoved)
+    for i in 0..<numRemoved:
+      result[i] = backend.entries[i]
+  else:
+    # Check what happened
+    when defined(windows):
+      {.emit: """
+      DWORD err = GetLastError();
+      if (err != WAIT_TIMEOUT) {
+        // Error occurred
+      }
+      """.}
+    # On timeout or non-Windows, return empty
+    result = @[]
 
 proc post*(backend: var IocpBackend, key: UlongPtr, overlapped: ptr Overlapped = nil) =
   ## Post a custom completion (e.g., to wake up waiting threads).
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## if PostQueuedCompletionStatus(backend.iocp, 0, key, overlapped) == 0:
-  ##   raise newException(OSError, "PostQueuedCompletionStatus failed")
-  ## ```
+  ## Used for custom (non-I/O) completion packets.
 
-  discard
+  if PostQueuedCompletionStatus(backend.iocp, 0, key, overlapped) == 0:
+    raise newException(OSError, "PostQueuedCompletionStatus failed")

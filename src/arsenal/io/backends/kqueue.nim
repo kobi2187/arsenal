@@ -9,33 +9,33 @@
 ## - Edge-triggered by default
 ## - Kernel-managed event queue
 
-{.pragma: kqImport, importc, header: "<sys/event.h>".}
+import std/posix
 
 # =============================================================================
 # kqueue Constants
 # =============================================================================
 
 const
-  EVFILT_READ* {.kqImport.}: int16      ## Readable filter
-  EVFILT_WRITE* {.kqImport.}: int16     ## Writable filter
-  EVFILT_TIMER* {.kqImport.}: int16     ## Timer filter
-  EVFILT_SIGNAL* {.kqImport.}: int16    ## Signal filter
+  EVFILT_READ* = int16(-1)      ## Readable filter
+  EVFILT_WRITE* = int16(-2)     ## Writable filter
+  EVFILT_TIMER* = int16(6)      ## Timer filter
+  EVFILT_SIGNAL* = int16(7)     ## Signal filter
 
-  EV_ADD* {.kqImport.}: uint16          ## Add event to kqueue
-  EV_DELETE* {.kqImport.}: uint16       ## Delete event
-  EV_ENABLE* {.kqImport.}: uint16       ## Enable event
-  EV_DISABLE* {.kqImport.}: uint16      ## Disable event
-  EV_ONESHOT* {.kqImport.}: uint16      ## Only report once
-  EV_CLEAR* {.kqImport.}: uint16        ## Reset state after retrieval
-  EV_EOF* {.kqImport.}: uint16          ## EOF detected
-  EV_ERROR* {.kqImport.}: uint16        ## Error occurred
+  EV_ADD* = uint16(0x0001)      ## Add event to kqueue
+  EV_DELETE* = uint16(0x0002)   ## Delete event
+  EV_ENABLE* = uint16(0x0004)   ## Enable event
+  EV_DISABLE* = uint16(0x0008)  ## Disable event
+  EV_ONESHOT* = uint16(0x0010)  ## Only report once
+  EV_CLEAR* = uint16(0x0020)    ## Reset state after retrieval
+  EV_EOF* = uint16(0x8000)      ## EOF detected
+  EV_ERROR* = uint16(0x4000)    ## Error occurred
 
 # =============================================================================
 # kqueue Types
 # =============================================================================
 
 type
-  Kevent* {.kqImport, importc: "struct kevent".} = object
+  Kevent* = object
     ## Kernel event structure
     ident*: uint      ## Identifier (usually fd)
     filter*: int16    ## Filter type (EVFILT_READ, etc.)
@@ -44,18 +44,20 @@ type
     data*: int        ## Filter-specific data
     udata*: pointer   ## User-defined data
 
-  Timespec* {.kqImport, importc: "struct timespec".} = object
+  Timespec* = object
     ## Time specification
     tv_sec*: int      ## Seconds
     tv_nsec*: int     ## Nanoseconds
 
 # =============================================================================
-# kqueue System Calls
+# kqueue System Calls (BSD/macOS only - stubs on other platforms)
 # =============================================================================
 
-proc kqueue*(): cint {.kqImport.}
+proc kqueue*(): cint =
   ## Create a new kernel event queue.
   ## Returns file descriptor or -1 on error.
+  ## Stub implementation - only available on BSD/macOS
+  -1
 
 proc kevent*(
   kq: cint,
@@ -64,14 +66,10 @@ proc kevent*(
   eventlist: ptr Kevent,
   nevents: cint,
   timeout: ptr Timespec
-): cint {.kqImport.}
+): cint =
   ## Control and wait for events on kqueue.
-  ## changelist: Events to register
-  ## nchanges: Number of events in changelist
-  ## eventlist: Buffer for returned events
-  ## nevents: Size of eventlist
-  ## timeout: Timeout (nil = infinite)
-  ## Returns: Number of events returned, or -1 on error
+  ## Stub implementation - only available on BSD/macOS
+  -1
 
 # =============================================================================
 # Backend Implementation
@@ -87,105 +85,89 @@ type
 proc initKqueue*(maxEvents: int = 1024): KqueueBackend =
   ## Initialize kqueue backend.
   ## Creates a new kernel event queue and allocates buffer for events.
-
-  result.kq = kqueue()
-  if result.kq < 0:
-    raise newException(OSError, "kqueue() failed")
+  ## NOTE: Only functional on BSD/macOS systems
 
   result.maxEvents = maxEvents
   result.events = newSeq[Kevent](maxEvents)
+  result.kq = kqueue()
+  if result.kq < 0:
+    raise newException(OSError, "kqueue() failed - not available on this platform")
 
 proc destroyKqueue*(backend: var KqueueBackend) =
   ## Clean up kqueue backend.
   ## Closes the kqueue file descriptor and clears event buffer.
 
   if backend.kq >= 0:
-    discard close(backend.kq)
+    when defined(bsd) or defined(macosx):
+      discard close(backend.kq)
     backend.kq = -1
   backend.events.setLen(0)
 
 proc addRead*(backend: var KqueueBackend, fd: int, data: pointer = nil) =
   ## Register interest in read events.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## var event: Kevent
-  ## EV_SET(addr event, fd.uint, EVFILT_READ, EV_ADD or EV_CLEAR, 0, 0, data)
-  ##
-  ## if kevent(backend.kq, addr event, 1, nil, 0, nil) < 0:
-  ##   raise newException(OSError, "kevent ADD READ failed")
-  ## ```
-  ##
-  ## Note: EV_SET is usually a macro:
-  ## ```c
-  ## #define EV_SET(kevp, a, b, c, d, e, f) do { \
-  ##   (kevp)->ident = (a); \
-  ##   (kevp)->filter = (b); \
-  ##   (kevp)->flags = (c); \
-  ##   (kevp)->fflags = (d); \
-  ##   (kevp)->data = (e); \
-  ##   (kevp)->udata = (f); \
-  ## } while(0)
-  ## ```
 
-  discard
+  var event: Kevent
+  event.ident = fd.uint
+  event.filter = EVFILT_READ
+  event.flags = EV_ADD or EV_CLEAR
+  event.fflags = 0
+  event.data = 0
+  event.udata = data
+
+  if kevent(backend.kq, addr event, 1, nil, 0, nil) < 0:
+    raise newException(OSError, "kevent ADD READ failed")
 
 proc addWrite*(backend: var KqueueBackend, fd: int, data: pointer = nil) =
   ## Register interest in write events.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## var event: Kevent
-  ## EV_SET(addr event, fd.uint, EVFILT_WRITE, EV_ADD or EV_CLEAR, 0, 0, data)
-  ##
-  ## if kevent(backend.kq, addr event, 1, nil, 0, nil) < 0:
-  ##   raise newException(OSError, "kevent ADD WRITE failed")
-  ## ```
 
-  discard
+  var event: Kevent
+  event.ident = fd.uint
+  event.filter = EVFILT_WRITE
+  event.flags = EV_ADD or EV_CLEAR
+  event.fflags = 0
+  event.data = 0
+  event.udata = data
+
+  if kevent(backend.kq, addr event, 1, nil, 0, nil) < 0:
+    raise newException(OSError, "kevent ADD WRITE failed")
 
 proc removeFd*(backend: var KqueueBackend, fd: int, filter: int16) =
   ## Remove event from kqueue.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## var event: Kevent
-  ## EV_SET(addr event, fd.uint, filter, EV_DELETE, 0, 0, nil)
-  ##
-  ## # Ignore errors - fd might be closed
-  ## discard kevent(backend.kq, addr event, 1, nil, 0, nil)
-  ## ```
 
-  discard
+  var event: Kevent
+  event.ident = fd.uint
+  event.filter = filter
+  event.flags = EV_DELETE
+  event.fflags = 0
+  event.data = 0
+  event.udata = nil
+
+  discard kevent(backend.kq, addr event, 1, nil, 0, nil)
 
 proc wait*(backend: var KqueueBackend, timeoutMs: int): seq[Kevent] =
   ## Wait for I/O events.
-  ##
-  ## IMPLEMENTATION:
-  ## ```nim
-  ## var timeout: Timespec
-  ## var timeoutPtr: ptr Timespec
-  ##
-  ## if timeoutMs >= 0:
-  ##   timeout.tv_sec = timeoutMs div 1000
-  ##   timeout.tv_nsec = (timeoutMs mod 1000) * 1_000_000
-  ##   timeoutPtr = addr timeout
-  ## else:
-  ##   timeoutPtr = nil  # Infinite
-  ##
-  ## let n = kevent(
-  ##   backend.kq,
-  ##   nil, 0,  # No changes
-  ##   addr backend.events[0], backend.maxEvents.cint,
-  ##   timeoutPtr
-  ## )
-  ##
-  ## if n < 0:
-  ##   if errno == EINTR:
-  ##     return @[]  # Interrupted
-  ##   raise newException(OSError, "kevent wait failed")
-  ##
-  ## result = backend.events[0..<n]
-  ## ```
 
-  result = @[]
+  var timeout: Timespec
+  var timeoutPtr: ptr Timespec
+
+  if timeoutMs >= 0:
+    timeout.tv_sec = timeoutMs div 1000
+    timeout.tv_nsec = (timeoutMs mod 1000) * 1_000_000
+    timeoutPtr = addr timeout
+  else:
+    timeoutPtr = nil
+
+  let n = kevent(
+    backend.kq,
+    nil, 0,
+    addr backend.events[0], backend.maxEvents.cint,
+    timeoutPtr
+  )
+
+  if n < 0:
+    when not defined(windows):
+      if errno == EINTR:
+        return @[]
+    raise newException(OSError, "kevent wait failed")
+
+  result = backend.events[0..<n]

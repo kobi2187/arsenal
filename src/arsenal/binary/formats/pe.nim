@@ -411,7 +411,7 @@ proc parsePe*(data: openArray[uint8]): PeFile =
 
   # Parse section headers
   offset = peOffset + 24 + result.coffHeader.sizeOfOptionalHeader.int
-  for i in 0..<result.coffHeader.numberOfSections:
+  for i in 0..<int(result.coffHeader.numberOfSections):
     let sectionHdr = parseSectionHeader(data, offset)
     offset += 40
 
@@ -438,21 +438,116 @@ proc parsePe*(data: openArray[uint8]): PeFile =
 
     result.sections.add(section)
 
-  # Parse imports (simplified)
+  # Parse imports
   let importDir = result.optionalHeader.dataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT]
   if importDir.size > 0 and importDir.virtualAddress > 0:
     let importOffset = rvaToFileOffset(importDir.virtualAddress, result.sections)
-    if importOffset >= 0:
-      # Parse import descriptors (simplified - would need full implementation)
-      discard
+    if importOffset >= 0 and importOffset + 20 <= data.len:
+      # Parse import descriptors (each is 20 bytes)
+      var descOffset = importOffset
+      while descOffset + 20 <= data.len:
+        var offset = descOffset
+        let descriptor = ImportDescriptor(
+          originalFirstThunk: readU32LE(data, offset),
+          timeDateStamp: readU32LE(data, offset),
+          forwarderChain: readU32LE(data, offset),
+          name: readU32LE(data, offset),
+          firstThunk: readU32LE(data, offset)
+        )
 
-  # Parse exports (simplified)
+        # If name is 0, we've reached the end of imports
+        if descriptor.name == 0'u32:
+          break
+
+        # Get DLL name
+        let dllOffset = rvaToFileOffset(descriptor.name, result.sections)
+        let dllName = if dllOffset >= 0: readString(data, dllOffset) else: "???"
+
+        # Parse thunk (function) entries from import lookup table
+        let thunkOffset = if descriptor.originalFirstThunk > 0:
+          rvaToFileOffset(descriptor.originalFirstThunk, result.sections)
+        else:
+          rvaToFileOffset(descriptor.firstThunk, result.sections)
+
+        if thunkOffset >= 0:
+          var thunkPos = thunkOffset
+          # Process thunk table entries (32-bit RVAs in this simplified version)
+          while thunkPos + 4 <= data.len:
+            var offset = thunkPos
+            let thunkEntry = readU32LE(data, offset)
+            if thunkEntry == 0:
+              break
+
+            # High bit set means ordinal-only import, otherwise RVA to import name table
+            if (thunkEntry and 0x80000000'u32) == 0'u32:
+              # RVA to import by name
+              let nameOffset = rvaToFileOffset(thunkEntry, result.sections)
+              if nameOffset >= 0 and nameOffset + 2 <= data.len:
+                var offset2 = nameOffset
+                let ordinal = readU16LE(data, offset2)
+                let funcName = readString(data, offset2)
+                result.imports.add(PeImport(
+                  dllName: dllName,
+                  functionName: funcName,
+                  ordinal: ordinal,
+                  address: 0
+                ))
+            # Skip ordinal-only imports for simplicity
+
+            thunkPos += 4
+
+        descOffset += 20
+
+  # Parse exports
   let exportDir = result.optionalHeader.dataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]
   if exportDir.size > 0 and exportDir.virtualAddress > 0:
     let exportOffset = rvaToFileOffset(exportDir.virtualAddress, result.sections)
-    if exportOffset >= 0:
-      # Parse export directory (simplified - would need full implementation)
-      discard
+    if exportOffset >= 0 and exportOffset + 40 <= data.len:
+      var offset = exportOffset
+      let exportTable = ExportDirectory(
+        characteristics: readU32LE(data, offset),
+        timeDateStamp: readU32LE(data, offset),
+        majorVersion: readU16LE(data, offset),
+        minorVersion: readU16LE(data, offset),
+        name: readU32LE(data, offset),
+        base: readU32LE(data, offset),
+        numberOfFunctions: readU32LE(data, offset),
+        numberOfNames: readU32LE(data, offset),
+        addressOfFunctions: readU32LE(data, offset),
+        addressOfNames: readU32LE(data, offset),
+        addressOfNameOrdinals: readU32LE(data, offset)
+      )
+
+      # Parse exported functions
+      let funcTableOffset = rvaToFileOffset(exportTable.addressOfFunctions, result.sections)
+      let nameTableOffset = rvaToFileOffset(exportTable.addressOfNames, result.sections)
+      let ordinalTableOffset = rvaToFileOffset(exportTable.addressOfNameOrdinals, result.sections)
+
+      if funcTableOffset >= 0 and nameTableOffset >= 0 and ordinalTableOffset >= 0:
+        # Parse named exports
+        for i in 0..<int(exportTable.numberOfNames):
+          var offset = nameTableOffset + (i * 4)
+          if offset + 4 <= data.len:
+            let nameRva = readU32LE(data, offset)
+            let nameOffset = rvaToFileOffset(nameRva, result.sections)
+            if nameOffset >= 0:
+              let funcName = readString(data, nameOffset)
+
+              # Get ordinal for this name
+              var ordOffset = ordinalTableOffset + (i * 2)
+              if ordOffset + 2 <= data.len:
+                let ordinal = readU16LE(data, ordOffset)
+
+                # Get function address from function address table
+                let funcOffset = funcTableOffset + (int(ordinal) * 4)
+                if funcOffset + 4 <= data.len:
+                  var offset2 = funcOffset
+                  let funcRva = readU32LE(data, offset2)
+                  result.exports.add(PeExport(
+                    name: funcName,
+                    ordinal: ordinal.uint32,
+                    address: funcRva
+                  ))
 
 proc parsePeFile*(filename: string): PeFile =
   ## Parse PE file from path

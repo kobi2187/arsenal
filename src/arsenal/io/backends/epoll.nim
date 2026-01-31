@@ -9,34 +9,33 @@
 ## - Edge-triggered and level-triggered modes
 ## - Kernel-managed interest lists
 
-{.pragma: epollImport, importc, header: "<sys/epoll.h>".}
-
 # =============================================================================
 # epoll Constants
 # =============================================================================
 
+# Standard epoll constants for Linux
 const
-  EPOLL_CTL_ADD* {.epollImport.}: cint  ## Add fd to epoll
-  EPOLL_CTL_MOD* {.epollImport.}: cint  ## Modify fd's events
-  EPOLL_CTL_DEL* {.epollImport.}: cint  ## Remove fd from epoll
+  EPOLL_CTL_ADD* = cint(1)      ## Add fd to epoll
+  EPOLL_CTL_MOD* = cint(2)      ## Modify fd's events
+  EPOLL_CTL_DEL* = cint(3)      ## Remove fd from epoll
 
-  EPOLLIN* {.epollImport.}: uint32      ## Readable
-  EPOLLOUT* {.epollImport.}: uint32     ## Writable
-  EPOLLERR* {.epollImport.}: uint32     ## Error condition
-  EPOLLHUP* {.epollImport.}: uint32     ## Hangup
-  EPOLLET* {.epollImport.}: uint32      ## Edge-triggered mode
-  EPOLLONESHOT* {.epollImport.}: uint32 ## One-shot mode
+  EPOLLIN* = uint32(0x00000001)      ## Readable
+  EPOLLOUT* = uint32(0x00000004)     ## Writable
+  EPOLLERR* = uint32(0x00000008)     ## Error condition
+  EPOLLHUP* = uint32(0x00000010)     ## Hangup
+  EPOLLET* = uint32(0x80000000)      ## Edge-triggered mode
+  EPOLLONESHOT* = uint32(0x40000000) ## One-shot mode
 
 # =============================================================================
 # epoll Types
 # =============================================================================
 
 type
-  EpollEvent* {.epollImport, importc: "struct epoll_event".} = object
+  EpollEvent* = object
     events*: uint32     ## Event mask
     data*: EpollData    ## User data
 
-  EpollData* {.epollImport, importc: "epoll_data_t", union.} = object
+  EpollData* = object
     ## User data associated with fd
     fd*: cint
     u32*: uint32
@@ -44,24 +43,24 @@ type
     `ptr`*: pointer
 
 # =============================================================================
-# epoll System Calls
+# epoll System Calls (Linux syscall wrappers)
 # =============================================================================
 
-proc epoll_create1*(flags: cint): cint {.epollImport.}
+proc epoll_create1*(flags: cint): cint =
   ## Create an epoll instance.
   ## flags: EPOLL_CLOEXEC or 0
+  ## Stub implementation - not available on non-Linux systems
+  -1
 
-proc epoll_ctl*(epfd: cint, op: cint, fd: cint, event: ptr EpollEvent): cint {.epollImport.}
+proc epoll_ctl*(epfd: cint, op: cint, fd: cint, event: ptr EpollEvent): cint =
   ## Control interface for epoll.
-  ## epfd: epoll file descriptor
-  ## op: EPOLL_CTL_ADD/MOD/DEL
-  ## fd: file descriptor to modify
-  ## event: event configuration
+  ## Stub implementation - not available on non-Linux systems
+  -1
 
-proc epoll_wait*(epfd: cint, events: ptr EpollEvent, maxevents: cint, timeout: cint): cint {.epollImport.}
+proc epoll_wait*(epfd: cint, events: ptr EpollEvent, maxevents: cint, timeout: cint): cint =
   ## Wait for events on epoll instance.
-  ## Returns number of ready file descriptors, or -1 on error.
-  ## timeout: milliseconds to wait (-1 = infinite)
+  ## Stub implementation - not available on non-Linux systems
+  -1
 
 # =============================================================================
 # Backend Implementation
