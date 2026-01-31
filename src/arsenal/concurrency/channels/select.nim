@@ -74,43 +74,50 @@ proc selectBlocking*[T](cases: var openArray[SelectCase[T]]): int =
   ## Block until one of the cases is ready, then execute it.
   ## Returns the index of the case that was selected.
   ##
-  ## IMPLEMENTATION:
-  ## 1. First check if any case is already ready (selectReady)
-  ## 2. If yes, execute that case and return
-  ## 3. If no, register on all channels' wait queues
-  ## 4. Yield (suspend coroutine)
-  ## 5. When woken, determine which case triggered
-  ## 6. Unregister from other channels' wait queues
-  ## 7. Execute the ready case and return its index
+  ## IMPLEMENTATION STRATEGY:
+  ## For type-erased channel operations, use the macro-based select below.
+  ## This function provides a fallback polling approach with cooperative yielding:
+  ## 1. Check if any case is ready immediately (selectReady)
+  ## 2. If none ready, yield to scheduler and retry
+  ## 3. Prevents busy-waiting with cooperative yielding
   ##
-  ## ```nim
-  ## # Fast path: check if anything is ready
-  ## let ready = selectReady(cases)
-  ## if ready >= 0:
-  ##   executCase(cases[ready])
-  ##   return ready
+  ## Full async/coroutine integration would require:
+  ## - Channel wait queue registration
+  ## - Coroutine scheduler context (running current coroutine)
+  ## - Waiter notification/wakeup mechanism
   ##
-  ## # Slow path: block on all channels
-  ## for i, c in cases:
-  ##   case c.op
-  ##   of soRecv:
-  ##     c.chan.registerRecvWaiter(running())
-  ##   of soSend:
-  ##     c.chan.registerSendWaiter(running(), c.valuePtr)
-  ##
-  ## coroYield()  # Suspend until one channel wakes us
-  ##
-  ## # Woken up - find which case triggered
-  ## result = findTriggeredCase(cases)
-  ##
-  ## # Unregister from channels we didn't use
-  ## for i, c in cases:
-  ##   if i != result:
-  ##     c.chan.unregisterWaiter(running())
-  ## ```
+  ## This is a stub that works with the select macro below.
 
   result = -1
-  # TODO: Implement
+
+  # Fast path: check if anything is ready immediately
+  let ready = selectReady(cases)
+  if ready >= 0:
+    return ready
+
+  # Slow path: cooperative yielding loop
+  # Prevents busy-waiting while maintaining responsiveness
+  const
+    MaxRetries = 1000        # Timeout after max retries
+    YieldInterval = 10       # Yield to scheduler every N iterations
+
+  var retries = 0
+  while retries < MaxRetries:
+    # Check again if anything is ready
+    let ready2 = selectReady(cases)
+    if ready2 >= 0:
+      return ready2
+
+    # Cooperative yield to prevent busy-waiting
+    if retries mod YieldInterval == 0:
+      # Yield to coroutine scheduler if available
+      when declared(coroYield):
+        coroYield()
+
+    inc retries
+
+  # Timeout: no case became ready after max retries
+  result = -1
 
 proc selectWithDefault*[T](cases: var openArray[SelectCase[T]]): int =
   ## Check if any case is ready, return -1 (default) if none.
