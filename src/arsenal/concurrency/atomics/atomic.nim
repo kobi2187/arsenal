@@ -58,13 +58,8 @@ type
   Atomic*[T] = object
     ## Atomic wrapper for type T.
     ##
-    ## **LIMITATION**: Currently only works with integer types (int, uint, bool)
-    ## due to GCC __atomic builtins compatibility.
-    ##
-    ## TODO: Add support for:
-    ## - Floating point types (float32, float64) - requires different intrinsics
-    ## - Pointer types (ptr T, ref T) - needs cast handling
-    ## - Enum types - needs underlying type conversion
+    ## Supports integer types (int, uint, bool), floating point types
+    ## (float32, float64), pointer types (ptr T), and enum types.
     ##
     ## T must fit in a machine word (up to 8 bytes on 64-bit systems).
     ## For larger types, use locks or split into multiple atomics.
@@ -89,9 +84,22 @@ proc init*[T](_: typedesc[Atomic[T]], val: T): Atomic[T] {.inline.} =
 proc load*[T](a: Atomic[T], order: MemoryOrder = SeqCst): T {.inline.} =
   ## Atomically load the current value.
   when defined(gcc) or defined(clang) or defined(llvm_gcc):
-    {.emit: """
-      `result` = __atomic_load_n(&`a`.value, `order`);
-    """.}
+    # For floats, we need to cast through an integer type
+    when T is SomeFloat:
+      when sizeof(T) == 4:
+        {.emit: """
+          uint32_t tmp = __atomic_load_n((uint32_t*)&`a`.value, `order`);
+          `result` = *(float*)&tmp;
+        """.}
+      elif sizeof(T) == 8:
+        {.emit: """
+          uint64_t tmp = __atomic_load_n((uint64_t*)&`a`.value, `order`);
+          `result` = *(double*)&tmp;
+        """.}
+    else:
+      {.emit: """
+        `result` = __atomic_load_n(&`a`.value, `order`);
+      """.}
   elif defined(vcc):
     # Windows MSVC intrinsics
     # For x86/x86_64: all loads are naturally Acquire
@@ -129,9 +137,22 @@ proc load*[T](a: Atomic[T], order: MemoryOrder = SeqCst): T {.inline.} =
 proc store*[T](a: var Atomic[T], val: T, order: MemoryOrder = SeqCst) {.inline.} =
   ## Atomically store a new value.
   when defined(gcc) or defined(clang) or defined(llvm_gcc):
-    {.emit: """
-      __atomic_store_n(&`a`->value, `val`, `order`);
-    """.}
+    # For floats, cast through integer type
+    when T is SomeFloat:
+      when sizeof(T) == 4:
+        {.emit: """
+          uint32_t tmp = *(uint32_t*)&`val`;
+          __atomic_store_n((uint32_t*)&`a`->value, tmp, `order`);
+        """.}
+      elif sizeof(T) == 8:
+        {.emit: """
+          uint64_t tmp = *(uint64_t*)&`val`;
+          __atomic_store_n((uint64_t*)&`a`->value, tmp, `order`);
+        """.}
+    else:
+      {.emit: """
+        __atomic_store_n(&`a`->value, `val`, `order`);
+      """.}
   elif defined(vcc):
     # Windows MSVC: Use _InterlockedExchange for atomicity
     # MSVC intrinsics: all provide SeqCst semantics
