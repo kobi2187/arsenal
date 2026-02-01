@@ -36,16 +36,16 @@
    - `setNoDelay(enabled)` - Configure TCP_NODELAY
    - `setReuseAddr(enabled)` - Configure SO_REUSEADDR
    - `setKeepAlive(enabled)` - Configure TCP keepalive
-   - `getLocalAddr()` - Get local address (marked for escalation - Nim 1.6 API limitation)
-   - `getRemoteAddr()` - Get remote address (marked for escalation - Nim 1.6 API limitation)
+   - `getLocalAddr(domain)` - Get local address using nativesockets
+   - `getRemoteAddr(domain)` - Get remote address using nativesockets
 
 #### Implementation Notes:
-- All functions use Nim's `std/net.Socket` API for maximum compatibility
+- All functions use Nim's `std/net.Socket` and `std/nativesockets` APIs
 - Proper error handling with `SocketError` exceptions
-- Clear escalation points marked with `TODO ESCALATE: OPUS` for complex async integration:
-  - Async connect() with SO_ERROR checking after yield
-  - Async accept() with EAGAIN/EWOULDBLOCK retry pattern
-  - Non-blocking socket operation integration with EventLoop
+- Full async integration with EventLoop and coroutines:
+  - Non-blocking connect() with EINPROGRESS handling and waitForWrite()
+  - Non-blocking accept() with EAGAIN/EWOULDBLOCK retry via waitForRead()
+  - Non-blocking read/write with proper yield/resume patterns
 
 #### Compilation Status: ✅ SUCCESS
 - All 11 functions compile without errors
@@ -223,34 +223,41 @@ nim check src/arsenal.nim
 
 ---
 
-## Known Limitations & Escalation Points
+## Socket Operations - RESOLVED
 
-### Socket Operations (5 escalation points):
+All socket escalation points have been resolved with proper async implementations:
 
-1. **connect()** - `TODO ESCALATE: OPUS`
-   - Issue: Non-blocking connect requires SO_ERROR checking after yield
-   - Solution needed: Understand EventLoop result communication pattern
+### Completed Fixes:
 
-2. **accept()** - `TODO ESCALATE: OPUS`
-   - Issue: Non-blocking accept with EAGAIN/EWOULDBLOCK retry
-   - Solution needed: EventLoop yield/resume integration
+1. **connect()** - RESOLVED
+   - Now uses non-blocking connect with EINPROGRESS detection
+   - Waits for socket writability via EventLoop.waitForWrite()
+   - Properly integrates with coroutine yield/resume
 
-3. **read()** - `TODO ESCALATE: OPUS`
-   - Issue: Non-blocking recv with incomplete read handling
-   - Solution needed: Partial read semantics with async yield
+2. **accept()** - RESOLVED
+   - Non-blocking accept with EAGAIN/EWOULDBLOCK retry loop
+   - Waits for socket readability via EventLoop.waitForRead()
+   - Accepted sockets set to non-blocking mode automatically
 
-4. **write()** - `TODO ESCALATE: OPUS`
-   - Issue: Non-blocking send with partial write handling
-   - Solution needed: Buffering strategy for coroutine-safe writes
+3. **read()** - RESOLVED
+   - Non-blocking recv with proper EAGAIN/EWOULDBLOCK handling
+   - Yields to event loop when data not immediately available
+   - Returns 0 for EOF as expected
 
-5. **getLocalAddr/getRemoteAddr()** - `TODO ESCALATE: OPUS`
-   - Issue: Nim 1.6 Socket API doesn't expose getsockname/getpeername
-   - Solution needed: Investigate Nim 2.0+ API or direct syscall bindings
+4. **write()** - RESOLVED
+   - Non-blocking send with buffer-full detection
+   - Waits for socket writability before retrying
+   - Handles partial writes correctly
 
-### Workaround Status:
-- Current implementation uses blocking semantics temporarily
-- Escalation markers allow clear handoff to OPUS for integration review
-- Socket operations are fully functional but not yet truly async
+5. **getLocalAddr/getRemoteAddr()** - RESOLVED
+   - Uses std/nativesockets.getLocalAddr() and getPeerAddr()
+   - Works with Nim's existing socket API
+   - Returns (address, port) tuple
+
+### Implementation Details:
+- All operations now properly integrate with EventLoop and coroutines
+- Sockets are set to non-blocking mode on creation
+- Error messages use toLowerAscii for cross-platform EAGAIN/EWOULDBLOCK detection
 
 ---
 

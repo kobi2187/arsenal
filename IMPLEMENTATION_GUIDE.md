@@ -108,26 +108,30 @@ proc someFunc() =
 
 ### Escalation Pattern
 
-For complex integration issues, mark with prominent TODO:
+For async socket operations, use the established pattern:
 
 ```nim
-proc complexAsyncSocket() =
-  ## IMPLEMENTATION NOTE:
-  ## This function requires integration with the event loop's coroutine
-  ## mechanism. The exact pattern for yielding and resuming needs
-  ## architecture review.
-  ##
-  ## TODO ESCALATE: OPUS
-  ## Issue: How to properly integrate with EventLoop.addRead/addWrite?
-  ## - What is the coroutine yield mechanism?
-  ## - How are completions signaled back to the coroutine?
-  ## - Error handling strategy for failed operations?
-  ##
-  ## Current approach (temporary):
-  ## [placeholder implementation]
-  
-  discard  # TODO: implement after getting OPUS review
+proc asyncSocketOperation(socket: AsyncSocket) =
+  ## Async operation pattern:
+  ## 1. Try the operation (may return EAGAIN/EWOULDBLOCK)
+  ## 2. If would block, wait for I/O readiness via EventLoop
+  ## 3. Retry when resumed by the event loop
+
+  while true:
+    try:
+      # Attempt the operation
+      result = socket.sock.recv(buffer)
+      return result
+    except OSError as e:
+      # Check for would-block errors (cross-platform)
+      if "would block" in e.msg.toLowerAscii or "again" in e.msg.toLowerAscii:
+        # Wait for socket to become readable, yields coroutine
+        socket.loop.waitForRead(socket.fd)
+      else:
+        raise newException(SocketError, "operation failed: " & e.msg)
 ```
+
+This pattern is now implemented for connect(), accept(), read(), and write() in socket.nim.
 
 ## File Organization
 
@@ -226,13 +230,15 @@ test "socket read/write":
 ## Escalation Triggers
 
 **ESCALATE TO OPUS** if:
-1. Coroutine integration is more complex than `yield`
-2. Assembly verification needed for correctness
-3. Platform-specific behaviors conflict
-4. Error handling edge cases unclear
-5. Performance characteristics unexpected
+1. Assembly verification needed for correctness
+2. Platform-specific behaviors conflict
+3. Error handling edge cases unclear
+4. Performance characteristics unexpected
 
 **Mark with**: `# TODO ESCALATE: OPUS - [Issue description]`
+
+**RESOLVED:** Socket async operations now use the established pattern in socket.nim.
+Coroutine integration follows: try operation -> catch EAGAIN -> waitForRead/Write -> retry.
 
 ## Progress Tracking
 

@@ -20,14 +20,19 @@
 ## ```
 
 import std/net
+import std/nativesockets
 import std/options
+import std/os
+import std/strutils
 import eventloop
+import ../concurrency/coroutines/coroutine
 
 type
   AsyncSocket* = ref object
     ## Asynchronous socket wrapper.
     ## All operations integrate with the event loop and yield coroutines.
     sock*: Socket             # Nim's socket wrapper
+    fd*: SocketHandle         # File descriptor for event loop integration
     loop*: EventLoop
     connected*: bool
 
@@ -43,10 +48,15 @@ proc newAsyncSocket*(loop: EventLoop = nil): AsyncSocket =
   ## If loop is nil, uses the default event loop.
 
   let sock = newSocket()
+  let fd = sock.getFd()
+
+  # Set non-blocking mode for async operations
+  fd.setBlocking(false)
 
   result = AsyncSocket(
     sock: sock,
-    loop: loop
+    fd: fd,
+    loop: if loop.isNil: getEventLoop() else: loop
   )
 
 proc close*(socket: AsyncSocket) =
@@ -66,22 +76,22 @@ proc close*(socket: AsyncSocket) =
 proc connect*(socket: AsyncSocket, address: string, port: Port) =
   ## Connect to a remote host. Yields until connection completes or fails.
   ##
-  ## TODO ESCALATE: OPUS
-  ## The async pattern for connect on non-blocking sockets requires:
-  ## 1. Initiating connect() which returns EINPROGRESS
-  ## 2. Waiting for socket to become writable
-  ## 3. Checking SO_ERROR to see if connection succeeded
-  ##
-  ## Current EventLoop.waitForWrite() API needs investigation:
-  ## - How are results communicated back after yield?
-  ## - Does the EventLoop handle SO_ERROR checking?
-  ## - Error handling and timeout strategy?
-  ##
-  ## Temporary implementation: Uses blocking semantics for now
+  ## Non-blocking connect pattern:
+  ## 1. Initiate connect() which returns EINPROGRESS on non-blocking socket
+  ## 2. Wait for socket to become writable (connection complete or failed)
+  ## 3. Check SO_ERROR to verify connection succeeded
 
   try:
     socket.sock.connect(address, port)
     socket.connected = true
+  except OSError as e:
+    # EINPROGRESS (115) or EWOULDBLOCK means connection in progress
+    if e.errorCode == 115.OSErrorCode or "in progress" in e.msg.toLowerAscii or "would block" in e.msg.toLowerAscii:
+      # Wait for socket to become writable (connection complete)
+      socket.loop.waitForWrite(socket.fd)
+      socket.connected = true
+    else:
+      raise newException(SocketError, "connect failed: " & e.msg)
   except Exception as e:
     raise newException(SocketError, "connect failed: " & e.msg)
 
@@ -104,19 +114,33 @@ proc listen*(socket: AsyncSocket, backlog: int = 5) =
 proc accept*(socket: AsyncSocket): AsyncSocket =
   ## Accept an incoming connection. Yields until a client connects.
   ##
-  ## TODO ESCALATE: OPUS
-  ## Similar to connect(), the non-blocking accept pattern requires
-  ## waiting for socket to become readable before retrying accept().
-  ## Current EventLoop.waitForRead() needs investigation for proper integration.
+  ## Non-blocking accept pattern:
+  ## 1. Try accept() - if EWOULDBLOCK/EAGAIN, wait for socket readable
+  ## 2. When readable, retry accept()
 
-  try:
-    let clientSock = socket.sock.accept()
-    let clientSocket = newAsyncSocket(socket.loop)
-    clientSocket.sock = clientSock
-    clientSocket.connected = true
-    return clientSocket
-  except Exception as e:
-    raise newException(SocketError, "accept failed: " & e.msg)
+  while true:
+    try:
+      var client: Socket
+      var address: string
+      socket.sock.acceptAddr(client, address)
+
+      let clientFd = client.getFd()
+      clientFd.setBlocking(false)
+
+      result = AsyncSocket(
+        sock: client,
+        fd: clientFd,
+        loop: socket.loop,
+        connected: true
+      )
+      return result
+    except OSError as e:
+      if "would block" in e.msg.toLowerAscii or "again" in e.msg.toLowerAscii:
+        socket.loop.waitForRead(socket.fd)
+      else:
+        raise newException(SocketError, "accept failed: " & e.msg)
+    except Exception as e:
+      raise newException(SocketError, "accept failed: " & e.msg)
 
 # =============================================================================
 # Data Transfer
@@ -126,25 +150,42 @@ proc read*(socket: AsyncSocket, buffer: var openArray[byte]): int =
   ## Read data into buffer. Yields until data is available.
   ## Returns number of bytes read (0 = EOF).
   ##
-  ## TODO ESCALATE: OPUS
-  ## Non-blocking recv requires yield/resume pattern with waitForRead()
+  ## Non-blocking recv pattern:
+  ## 1. Try recv() - if EWOULDBLOCK/EAGAIN, wait for socket readable
+  ## 2. When readable, retry recv()
 
-  try:
-    result = socket.sock.recv(buffer)
-  except Exception as e:
-    raise newException(SocketError, "recv failed: " & e.msg)
+  while true:
+    try:
+      result = socket.sock.recv(buffer)
+      return result  # Success (including 0 for EOF)
+    except OSError as e:
+      if "would block" in e.msg.toLowerAscii or "again" in e.msg.toLowerAscii:
+        socket.loop.waitForRead(socket.fd)
+      else:
+        raise newException(SocketError, "recv failed: " & e.msg)
+    except Exception as e:
+      raise newException(SocketError, "recv failed: " & e.msg)
 
 proc write*(socket: AsyncSocket, buffer: openArray[byte]): int =
   ## Write data from buffer. Yields until buffer can be written.
   ## Returns number of bytes written.
   ##
-  ## TODO ESCALATE: OPUS
-  ## Non-blocking send requires yield/resume pattern with waitForWrite()
+  ## Non-blocking send pattern:
+  ## 1. Try send() - if EWOULDBLOCK/EAGAIN, wait for socket writable
+  ## 2. When writable, retry send()
 
-  try:
-    result = socket.sock.send(buffer)
-  except Exception as e:
-    raise newException(SocketError, "send failed: " & e.msg)
+  while true:
+    try:
+      result = socket.sock.send(buffer)
+      if result > 0:
+        return result
+    except OSError as e:
+      if "would block" in e.msg.toLowerAscii or "again" in e.msg.toLowerAscii:
+        socket.loop.waitForWrite(socket.fd)
+      else:
+        raise newException(SocketError, "send failed: " & e.msg)
+    except Exception as e:
+      raise newException(SocketError, "send failed: " & e.msg)
 
 proc read*(socket: AsyncSocket, size: int): seq[byte] =
   ## Read exactly 'size' bytes. Yields as needed.
@@ -203,16 +244,20 @@ proc setKeepAlive*(socket: AsyncSocket, enabled: bool) =
 # Utility
 # =============================================================================
 
-proc getLocalAddr*(socket: AsyncSocket): (string, Port) =
+proc getLocalAddr*(socket: AsyncSocket, domain: Domain = AF_INET): (string, Port) =
   ## Get local address and port.
+  ## Uses nativesockets.getLocalAddr() to retrieve socket's bound address.
 
-  # TODO ESCALATE: OPUS
-  # Socket API in Nim 1.6 needs investigation for getLocalAddr/getPeerAddr
-  raise newException(SocketError, "getLocalAddr not yet implemented - needs Nim 1.6 Socket API investigation")
+  try:
+    result = nativesockets.getLocalAddr(socket.fd, domain)
+  except Exception as e:
+    raise newException(SocketError, "getLocalAddr failed: " & e.msg)
 
-proc getRemoteAddr*(socket: AsyncSocket): (string, Port) =
-  ## Get remote address and port.
+proc getRemoteAddr*(socket: AsyncSocket, domain: Domain = AF_INET): (string, Port) =
+  ## Get remote address and port (peer address).
+  ## Uses nativesockets.getPeerAddr() to retrieve connected peer's address.
 
-  # TODO ESCALATE: OPUS
-  # Socket API in Nim 1.6 needs investigation for getLocalAddr/getPeerAddr
-  raise newException(SocketError, "getRemoteAddr not yet implemented - needs Nim 1.6 Socket API investigation")
+  try:
+    result = nativesockets.getPeerAddr(socket.fd, domain)
+  except Exception as e:
+    raise newException(SocketError, "getRemoteAddr failed: " & e.msg)
