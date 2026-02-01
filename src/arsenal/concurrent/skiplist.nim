@@ -21,7 +21,7 @@
 ## - Back-links for recovery from deleted nodes
 ## - Memory reclamation via hazard pointers or epoch-based
 
-import std/[atomics, random, hashes]
+import std/[atomics, random, options]
 
 # =============================================================================
 # Constants
@@ -68,7 +68,7 @@ type
     ## - Head/tail sentinel nodes never deleted
     head*: ptr SkipNode[K, V]
     tail*: ptr SkipNode[K, V]
-    maxHeight*: Atomic[int]
+    maxHeight*: ptr Atomic[int]
 
 # =============================================================================
 # MarkablePtr Operations
@@ -107,6 +107,9 @@ proc isMarked*[T](mp: MarkablePtr[T]): bool {.inline.} =
 
 proc mark*[T](mp: MarkablePtr[T]): MarkablePtr[T] {.inline.} =
   MarkablePtr[T](uint(mp) or 1'u)
+
+proc `==`*[T](a, b: MarkablePtr[T]): bool {.inline.} =
+  uint(a) == uint(b)
 
 # =============================================================================
 # Node Operations
@@ -151,7 +154,8 @@ proc newSkipList*[K, V](): SkipList[K, V] =
   for i in 0 ..< MaxLevel:
     result.head.next[i].store(pack(result.tail, false))
 
-  result.maxHeight.store(1)
+  result.maxHeight = create(Atomic[int])
+  result.maxHeight[].store(1)
 
 proc find*[K, V](sl: SkipList[K, V], key: K,
                  preds: var array[MaxLevel, ptr SkipNode[K, V]],
@@ -167,7 +171,7 @@ proc find*[K, V](sl: SkipList[K, V], key: K,
   ##
   ## Returns true if key found (at bottom level)
 
-  var level = sl.maxHeight.load() - 1
+  var level = sl.maxHeight[].load() - 1
   var pred = sl.head
 
   while level >= 0:
@@ -180,7 +184,7 @@ proc find*[K, V](sl: SkipList[K, V], key: K,
       # Help delete marked nodes
       while marked:
         # CAS to unlink curr
-        let expected = pack(curr, false)
+        var expected = pack(curr, false)
         let desired = pack(succ, false)
         discard pred.next[level].compareExchange(expected, desired)
 
@@ -218,11 +222,11 @@ proc insert*[K, V](sl: var SkipList[K, V], key: K, value: V): bool =
   let height = randomLevel()
 
   # Update max height if needed
-  var currMax = sl.maxHeight.load()
+  var currMax = sl.maxHeight[].load()
   while height > currMax:
-    if sl.maxHeight.compareExchange(currMax, height):
+    if sl.maxHeight[].compareExchange(currMax, height):
       break
-    currMax = sl.maxHeight.load()
+    currMax = sl.maxHeight[].load()
 
   var preds: array[MaxLevel, ptr SkipNode[K, V]]
   var succs: array[MaxLevel, ptr SkipNode[K, V]]
@@ -240,7 +244,7 @@ proc insert*[K, V](sl: var SkipList[K, V], key: K, value: V): bool =
       newNode.next[i].store(pack(succs[i], false))
 
     # Try to link at bottom level
-    let expected = pack(succs[0], false)
+    var expected = pack(succs[0], false)
     let desired = pack(newNode, false)
 
     if not preds[0].next[0].compareExchange(expected, desired):
@@ -253,7 +257,7 @@ proc insert*[K, V](sl: var SkipList[K, V], key: K, value: V): bool =
       while true:
         let pred = preds[i]
         let succ = succs[i]
-        let expected = pack(succ, false)
+        var expected = pack(succ, false)
         let desired = pack(newNode, false)
 
         if pred.next[i].compareExchange(expected, desired):
@@ -287,7 +291,7 @@ proc remove*[K, V](sl: var SkipList[K, V], key: K): bool =
     for i in countdown(nodeToRemove.height - 1, 1):
       var (succ, marked) = nodeToRemove.next[i].load().unpack()
       while not marked:
-        let expected = pack(succ, false)
+        var expected = pack(succ, false)
         let desired = pack(succ, true)
         if nodeToRemove.next[i].compareExchange(expected, desired):
           break
@@ -296,7 +300,7 @@ proc remove*[K, V](sl: var SkipList[K, V], key: K): bool =
     # Mark bottom level
     var (succ, marked) = nodeToRemove.next[0].load().unpack()
     while true:
-      let expected = pack(succ, false)
+      var expected = pack(succ, false)
       let desired = pack(succ, true)
       let success = nodeToRemove.next[0].compareExchange(expected, desired)
       (succ, marked) = nodeToRemove.next[0].load().unpack()

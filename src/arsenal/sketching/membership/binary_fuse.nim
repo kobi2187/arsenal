@@ -305,12 +305,139 @@ proc bitsPerEntry*(filter: BinaryFuse8, numKeys: int): float =
 # 16-bit variant (lower false positive rate)
 # =============================================================================
 
+proc computeHashes16(hash: uint64, filter: BinaryFuse16): BinaryHashes {.inline.} =
+  ## Compute three hash positions for a 16-bit filter key
+  let hi = mulhi(hash, filter.segmentCountLength)
+  result.h0 = uint32(hi)
+  result.h1 = result.h0 + filter.segmentLength
+  result.h2 = result.h1 + filter.segmentLength
+  result.h1 = result.h1 xor (uint32(hash shr 18) and filter.segmentLengthMask)
+  result.h2 = result.h2 xor (uint32(hash) and filter.segmentLengthMask)
+
 proc contains*(filter: BinaryFuse16, key: uint64): bool {.inline.} =
-  ## 16-bit variant with ~0.0015% false positive rate
-  # TODO: Implement similar to 8-bit but with uint16 fingerprints
-  raise newException(Defect, "BinaryFuse16 not yet implemented")
+  ## Test if key might be in the set (16-bit variant).
+  ## False positive rate: ~1/65536 = 0.0015%
+  let hash = mixSplit(key, filter.seed)
+  let f = fingerprint16(hash)
+  let hashes = computeHashes16(hash, filter)
+  let xored = f xor filter.fingerprints[hashes.h0] xor
+              filter.fingerprints[hashes.h1] xor
+              filter.fingerprints[hashes.h2]
+  result = xored == 0
+
+proc contains*(filter: BinaryFuse16, key: string): bool {.inline.} =
+  ## String variant for 16-bit filter
+  filter.contains(uint64(hash(key)))
 
 proc construct16*(keys: openArray[uint64]): BinaryFuse16 =
-  ## Construct 16-bit Binary Fuse Filter
-  # TODO: Implement
-  raise newException(Defect, "BinaryFuse16 not yet implemented")
+  ## Construct 16-bit Binary Fuse Filter.
+  ## Same algorithm as 8-bit but with uint16 fingerprints.
+  ## False positive rate: ~1/65536 = 0.0015%
+
+  if keys.len == 0:
+    return BinaryFuse16(
+      segmentLength: 4,
+      segmentLengthMask: 3,
+      segmentCount: 1,
+      fingerprints: newSeq[uint16](4)
+    )
+
+  let size = keys.len
+  result.segmentLength = calculateSegmentLength(size)
+  result.segmentLengthMask = result.segmentLength - 1
+
+  let sizeFactor = calculateSizeFactor(size)
+  let capacity = uint32(float(size) * sizeFactor)
+  result.segmentCount = (capacity + result.segmentLength - 1) div result.segmentLength
+  if result.segmentCount < 3:
+    result.segmentCount = 3
+
+  result.segmentCountLength = result.segmentCount * result.segmentLength
+  result.arrayLength = result.segmentCountLength + result.segmentLength * 2
+  result.fingerprints = newSeq[uint16](result.arrayLength)
+
+  # Construction arrays
+  var
+    count = newSeq[uint8](result.arrayLength)
+    xorAcc = newSeq[uint64](result.arrayLength)
+    stack = newSeq[tuple[idx: uint32, hash: uint64]](size)
+    stackPos = 0
+
+  const maxIterations = 100
+  var iteration = 0
+
+  while iteration < maxIterations:
+    inc iteration
+    result.seed = uint64(iteration) * 0x9e3779b97f4a7c15'u64
+
+    # Reset construction state
+    for i in 0 ..< result.arrayLength.int:
+      count[i] = 0
+      xorAcc[i] = 0
+    stackPos = 0
+
+    # Phase 2: Build constraint graph
+    for key in keys:
+      let hash = mixSplit(key, result.seed)
+      let hashes = computeHashes16(hash, result)
+
+      inc count[hashes.h0]
+      inc count[hashes.h1]
+      inc count[hashes.h2]
+      xorAcc[hashes.h0] = xorAcc[hashes.h0] xor hash
+      xorAcc[hashes.h1] = xorAcc[hashes.h1] xor hash
+      xorAcc[hashes.h2] = xorAcc[hashes.h2] xor hash
+
+    # Phase 3: Peeling
+    var queue = newSeq[uint32]()
+    for i in 0'u32 ..< result.arrayLength:
+      if count[i] == 1:
+        queue.add(i)
+
+    while queue.len > 0:
+      let idx = queue.pop()
+      if count[idx] != 1:
+        continue
+
+      let hash = xorAcc[idx]
+      let hashes = computeHashes16(hash, result)
+
+      stack[stackPos] = (idx, hash)
+      inc stackPos
+
+      for pos in [hashes.h0, hashes.h1, hashes.h2]:
+        dec count[pos]
+        xorAcc[pos] = xorAcc[pos] xor hash
+        if count[pos] == 1 and pos != idx:
+          queue.add(pos)
+
+    if stackPos == size:
+      break
+
+  if stackPos != size:
+    raise newException(ValueError, "Binary Fuse 16 construction failed")
+
+  # Phase 4: Assign fingerprints in reverse order
+  for i in countdown(stackPos - 1, 0):
+    let (idx, hash) = stack[i]
+    let hashes = computeHashes16(hash, result)
+    let fp = fingerprint16(hash)
+
+    if idx == hashes.h0:
+      result.fingerprints[hashes.h0] = fp xor
+        result.fingerprints[hashes.h1] xor result.fingerprints[hashes.h2]
+    elif idx == hashes.h1:
+      result.fingerprints[hashes.h1] = fp xor
+        result.fingerprints[hashes.h0] xor result.fingerprints[hashes.h2]
+    else:
+      result.fingerprints[hashes.h2] = fp xor
+        result.fingerprints[hashes.h0] xor result.fingerprints[hashes.h1]
+
+proc sizeInBytes*(filter: BinaryFuse16): int =
+  ## Return memory usage in bytes for 16-bit filter
+  filter.fingerprints.len * 2 + sizeof(filter)
+
+proc bitsPerEntry*(filter: BinaryFuse16, numKeys: int): float =
+  ## Return bits per entry (should be ~18.08 for 16-bit filter)
+  if numKeys == 0: return 0.0
+  float(filter.fingerprints.len * 16) / float(numKeys)

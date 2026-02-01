@@ -24,7 +24,7 @@
 ##   - Large δ: Less parallelism, fewer phases
 ##   - Optimal δ ≈ 1/d for random graphs
 
-import std/[algorithm, heapqueue, sets, tables]
+import std/[heapqueue, sets]
 
 # =============================================================================
 # Types
@@ -118,8 +118,8 @@ proc toCSR*(adj: AdjacencyList): CSRGraph =
     for j, e in adj.neighbors[i]:
       result.edges[start + j] = e
 
-proc neighbors*(g: CSRGraph, node: NodeId): openArray[Edge] =
-  ## Get neighbors of a node.
+template neighbors*(g: CSRGraph, node: NodeId): untyped =
+  ## Get neighbors of a node as a slice.
   let start = g.offsets[node]
   let stop = g.offsets[node + 1]
   g.edges.toOpenArray(start, stop - 1)

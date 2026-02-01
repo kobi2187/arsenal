@@ -291,7 +291,7 @@ when defined(arm64):
 # Public API
 # =============================================================================
 
-proc find*(haystack, needle: string): int =
+proc simdFind*(haystack, needle: string): int =
   ## Find first occurrence of needle in haystack.
   ## Automatically selects best SIMD backend.
   ##
@@ -313,7 +313,7 @@ proc find*(haystack, needle: string): int =
   else:
     return findScalar(haystack, needle)
 
-proc findAll*(haystack, needle: string): seq[int] =
+proc simdFindAll*(haystack, needle: string): seq[int] =
   ## Find all occurrences of needle in haystack.
   ## Returns sequence of starting indices.
   result = @[]
@@ -322,19 +322,19 @@ proc findAll*(haystack, needle: string): seq[int] =
 
   var start = 0
   while start <= haystack.len - needle.len:
-    let pos = find(haystack.toOpenArray(start, haystack.len - 1), needle)
+    let pos = simdFind(haystack[start..^1], needle)
     if pos == -1:
       break
     result.add(start + pos)
     start += pos + 1
 
-proc count*(haystack, needle: string): int =
+proc simdCount*(haystack, needle: string): int =
   ## Count occurrences of needle in haystack.
-  findAll(haystack, needle).len
+  simdFindAll(haystack, needle).len
 
-proc contains*(haystack, needle: string): bool =
+proc simdContains*(haystack, needle: string): bool =
   ## Check if haystack contains needle.
-  find(haystack, needle) >= 0
+  simdFind(haystack, needle) >= 0
 
 proc startsWith*(s, prefix: string): bool =
   ## SIMD-accelerated prefix check.
