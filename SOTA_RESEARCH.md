@@ -2,6 +2,23 @@
 
 This document summarizes research on high-performance algorithms and data structures that could significantly enhance Arsenal's capabilities, focusing on areas where Nim's stdlib is lacking or where industry-standard implementations provide major benefits.
 
+## Implementation Status
+
+Detailed stubs with technical explanations have been created for:
+
+| Algorithm | File | Status |
+|-----------|------|--------|
+| Binary Fuse Filter | `src/arsenal/sketching/membership/binary_fuse.nim` | Stub with core algorithm |
+| Gorilla Compression | `src/arsenal/timeseries/gorilla.nim` | Stub with encoder/decoder |
+| H3 Hexagonal Grid | `src/arsenal/geo/h3.nim` | Stub with type definitions |
+| SIMD String Search | `src/arsenal/strings/simd_search.nim` | Stub with nimsimd integration |
+| Delta-Stepping SSSP | `src/arsenal/graph/sssp.nim` | Stub with full algorithm |
+| Harley-Seal Popcount | `src/arsenal/bits/popcount.nim` | Stub with CSA implementation |
+| Lock-Free Skip List | `src/arsenal/concurrent/skiplist.nim` | Stub with CAS operations |
+
+**Note:** For SIMD operations, use [nimsimd](https://github.com/guzba/nimsimd) which provides
+SSE2/SSE4.2/AVX2/NEON intrinsics. For serialization, use existing libraries (flatty, msgpack, protobuf).
+
 ---
 
 ## Executive Summary
@@ -21,7 +38,7 @@ Arsenal already has solid foundations in:
 | P0 | Filters | Binary Fuse Filter | High | Low |
 | P0 | Strings | StringZilla-style SIMD | Very High | Medium |
 | P1 | Time Series | Gorilla Compression | High | Low |
-| P1 | Serialization | Zero-copy FlatBuffers | High | Medium |
+| P1 | Concurrent | Lock-Free Skip List | High | Medium |
 | P1 | Graphs | Delta-Stepping SSSP | High | Medium |
 | P2 | Encoding | SIMD Base64 | Medium | Low |
 | P2 | Filters | Ribbon Filter | Medium | Medium |
