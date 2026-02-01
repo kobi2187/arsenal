@@ -21,14 +21,18 @@
 ## Requires: nimsimd package
 ## nimble install nimsimd
 
-when defined(amd64) or defined(i386):
-  import nimsimd/sse2
-  import nimsimd/sse42
-  when defined(avx2):
-    import nimsimd/avx2
-
-when defined(arm64):
-  import nimsimd/neon
+# SIMD intrinsic imports (optional, for full implementation)
+# when defined(amd64) or defined(i386):
+#   import nimsimd/sse2
+#   import nimsimd/sse42
+#   when defined(avx2):
+#     import nimsimd/avx2
+#
+# when defined(arm64):
+#   import nimsimd/neon
+#
+# Note: Currently these implementations use scalar fallback.
+# Full SIMD implementations require nimsimd package.
 
 # =============================================================================
 # Types
@@ -53,12 +57,46 @@ proc detectBackend*(): SimdBackend =
   when defined(arm64):
     return sbNEON
   elif defined(amd64) or defined(i386):
-    # TODO: Use nimsimd runtime check
-    # For now, compile-time detection
-    when defined(avx2):
-      return sbAVX2
+    # Runtime CPUID detection for x86/x86_64
+    when defined(gcc) or defined(clang) or defined(llvm_gcc):
+      var eax, ebx, ecx, edx: uint32
+
+      # CPUID leaf 1: Check for SSE4.2 (bit 20 in ECX)
+      {.emit: """
+        __asm__ __volatile__(
+          "cpuid"
+          : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+          : "a"(1)
+        );
+      """.}
+
+      let hasSSE42 = (ecx and (1'u32 shl 20)) != 0
+
+      # If SSE4.2 not available, fall back to scalar
+      if not hasSSE42:
+        return sbScalar
+
+      # Check for AVX2 if supported (CPUID leaf 7)
+      {.emit: """
+        __asm__ __volatile__(
+          "cpuid"
+          : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+          : "a"(7), "c"(0)
+        );
+      """.}
+
+      let hasAVX2 = (ebx and (1'u32 shl 5)) != 0
+
+      if hasAVX2:
+        return sbAVX2
+      else:
+        return sbSSE42
     else:
-      return sbSSE42
+      # Fallback for MSVC or other compilers
+      when defined(avx2):
+        return sbAVX2
+      else:
+        return sbSSE42
   else:
     return sbScalar
 
