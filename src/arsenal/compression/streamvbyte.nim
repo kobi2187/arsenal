@@ -233,7 +233,8 @@ when defined(amd64) and not defined(noSimd):
                     (data[dataIdx + 2].uint32 shl 16) or (data[dataIdx + 3].uint32 shl 24)
             dataIdx += 4
           else:
-            discard
+            # Unreachable: lengthCode is a 2-bit field (0-3), so numBytes is always 1-4
+            assert false, "Invalid StreamVByte length code"
 
           result[valueIdx] = value
           inc valueIdx
