@@ -426,7 +426,12 @@ proc parseMacho*(data: openArray[uint8]): MachoFile =
       result.entryPoint = readU64LE(data, pos)
 
     else:
-      discard
+      # Unhandled load command type
+      # This is expected for less common command types (LC_SEGMENT_64_PAGEZERO,
+      # LC_NOTE, LC_BUILD_VERSION, etc.) that don't affect basic parsing.
+      # Supported: LC_SEGMENT, LC_SEGMENT_64, LC_SYMTAB, LC_DYLIB, LC_DYLINKER, LC_MAIN
+      when defined(debug):
+        debugEcho "Unsupported Mach-O load command type: 0x" & cmd.toHex(8)
 
     offset += lcmd.cmdsize.int
 

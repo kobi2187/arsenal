@@ -301,8 +301,11 @@ proc add*(rb: var RoaringBitmap, value: uint32) =
     of BitmapContainer:
       rb.containers[idx].addToBitmap(lowBits)
     of RunContainer:
-      # For now, treat run containers like arrays
-      discard
+      # TODO: Implement RunContainer add operation
+      # For now, run containers are treated as opaque containers
+      # Full support would require run-length encoding logic
+      when defined(debug):
+        debugEcho "RunContainer add operation not yet fully implemented"
   else:
     # Create new container
     let insertPos = -(idx + 1)
@@ -358,7 +361,11 @@ proc remove*(rb: var RoaringBitmap, value: uint32): bool =
     if rb.containers[idx].cardinality() <= ArrayContainerMaxSize:
       rb.containers[idx] = rb.containers[idx].bitmapToArray()
   of RunContainer:
-    discard
+    # TODO: Implement RunContainer remove operation
+    # For now, run containers are treated as opaque containers
+    # Full support would require run-length decoding and removal logic
+    when defined(debug):
+      debugEcho "RunContainer remove operation not yet fully implemented"
 
   # Remove container if empty
   if removed and rb.containers[idx].cardinality() == 0:
