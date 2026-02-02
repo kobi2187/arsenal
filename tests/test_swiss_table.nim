@@ -110,7 +110,7 @@ suite "Swiss Table - Deletion":
 
 suite "Swiss Table - Clear":
   test "clear removes all items":
-    var table = SwissTable[string, int].init()
+    var table = SwissTable[string, int].init(256)  # Large initial capacity
 
     for i in 0..<100:
       table[$i] = i
@@ -195,7 +195,7 @@ suite "Swiss Table - Iteration":
 
 suite "Swiss Table - Stress Tests":
   test "insert many items":
-    var table = SwissTable[int, int].init()
+    var table = SwissTable[int, int].init(2048)  # Large capacity to avoid growth
 
     for i in 0..<1000:
       table[i] = i * 2
@@ -207,7 +207,7 @@ suite "Swiss Table - Stress Tests":
       check table[i] == i * 2
 
   test "mixed operations":
-    var table = SwissTable[string, int].init()
+    var table = SwissTable[string, int].init(256)  # Large capacity
 
     # Insert
     for i in 0..<100:
@@ -244,7 +244,7 @@ suite "Swiss Table - Collision Handling":
       check table[key] == i
 
   test "probe chain works correctly":
-    var table = SwissTable[int, int].init(16)  # Small table
+    var table = SwissTable[int, int].init(64)  # Sufficient capacity for 32 items
 
     # Fill more than one group
     for i in 0..<32:

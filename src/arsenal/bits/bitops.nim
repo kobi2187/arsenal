@@ -250,6 +250,9 @@ proc nextPowerOfTwo*(x: uint32): uint32 {.inline.} =
   ## Use CLZ: `1 << (32 - clz(x - 1))`
   ## Or bit smearing:
 
+  if x == 0:
+    return 1
+
   var v = x - 1
   v = v or (v shr 1)
   v = v or (v shr 2)
@@ -259,6 +262,9 @@ proc nextPowerOfTwo*(x: uint32): uint32 {.inline.} =
   v + 1
 
 proc nextPowerOfTwo*(x: uint64): uint64 {.inline.} =
+  if x == 0:
+    return 1
+
   var v = x - 1
   v = v or (v shr 1)
   v = v or (v shr 2)
@@ -291,6 +297,10 @@ proc extractBits*(x: uint64, start, length: int): uint64 {.inline.} =
   ##   (x shr start) and ((1'u64 shl length) - 1)
   ## ```
 
+  if length == 0:
+    return 0
+  if length >= 64:
+    return x shr start
   (x shr start) and ((1'u64 shl length) - 1)
 
 proc depositBits*(x, mask: uint64): uint64 {.inline.} =
