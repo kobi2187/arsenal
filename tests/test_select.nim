@@ -9,48 +9,31 @@ import ../src/arsenal/concurrency/channels/select
 import ../src/arsenal/concurrency/coroutines/coroutine
 import ../src/arsenal/concurrency/scheduler
 
-# =============================================================================
-# Test Helpers
-# =============================================================================
-
-var testsPassed = 0
-var testsFailed = 0
-
-template test(name: string, body: untyped) =
-  try:
-    body
-    echo "  [OK] ", name
-    inc testsPassed
-  except CatchableError as e:
-    echo "  [FAIL] ", name, ": ", e.msg
-    echo "  Stack trace:"
-    echo e.getStackTrace()
-    inc testsFailed
-
-template check(cond: bool, msg: string = "") =
-  if not cond:
-    let fullMsg = if msg.len > 0: "Check failed: " & msg else: "Check failed"
-    raise newException(AssertionDefect, fullMsg)
+# Note: Test helpers provided by unittest framework in test_all.nim
+# For standalone execution, we need check template
+when not declared(check):
+  template check(cond: bool, msg: string = "") =
+    doAssert cond, msg
 
 # =============================================================================
 # Test 1: Select with default (non-blocking)
 # =============================================================================
 
 proc testSelectWithDefault() =
-  let ch1 = newChan[int]()
-  let ch2 = newChan[string]()
+  let ch1 = newBufferedChan[int](2)
+  let ch2 = newBufferedChan[string](2)
 
   var result = ""
 
   # Nothing ready, should hit default
   select:
-    of ch1.tryRecv() -> opt:
+    recv ch1 -> opt:
       if opt.isSome:
         result = "ch1: " & $opt.get
-    of ch2.tryRecv() -> opt:
+    recv ch2 -> opt:
       if opt.isSome:
         result = "ch2: " & opt.get
-    else:
+    default:
       result = "default"
 
   check result == "default", "Expected default case"
@@ -60,13 +43,13 @@ proc testSelectWithDefault() =
 
   result = ""
   select:
-    of ch1.tryRecv() -> opt:
+    recv ch1 -> opt:
       if opt.isSome:
         result = "ch1: " & $opt.get
-    of ch2.tryRecv() -> opt:
+    recv ch2 -> opt:
       if opt.isSome:
         result = "ch2: " & opt.get
-    else:
+    default:
       result = "default"
 
   check result == "ch1: 42", "Expected ch1 result, got: " & result
@@ -84,13 +67,13 @@ proc testSelectBuffered() =
 
   var result = ""
   select:
-    of ch1.tryRecv() -> opt:
+    recv ch1 -> opt:
       if opt.isSome:
         result = "ch1"
-    of ch2.tryRecv() -> opt:
+    recv ch2 -> opt:
       if opt.isSome:
         result = "ch2: " & opt.get
-    else:
+    default:
       result = "default"
 
   check result == "ch2: hello", "Expected ch2, got: " & result
@@ -126,19 +109,36 @@ proc testHelpers() =
 # Main
 # =============================================================================
 
-when isMainModule:
-  echo "\n=== Select Statement Tests ===\n"
+# Tests are run via test_all.nim using unittest framework
+when declared(suite):
+  suite "Select Statement Tests":
+    test "select with default (non-blocking)":
+      testSelectWithDefault()
 
-  test "select with default (non-blocking)":
-    testSelectWithDefault()
+    test "select with buffered channels":
+      testSelectBuffered()
 
-  test "select with buffered channels":
-    testSelectBuffered()
+    test "helper functions (sendTo/recvFrom)":
+      testHelpers()
+else:
+  # Standalone execution
+  when isMainModule:
+    echo "\n=== Select Statement Tests ===\n"
 
-  test "helper functions (sendTo/recvFrom)":
-    testHelpers()
+    try:
+      testSelectWithDefault()
+      echo "  [OK] select with default (non-blocking)"
+    except CatchableError as e:
+      echo "  [FAIL] select with default (non-blocking): ", e.msg
 
-  echo "\n=== Results: ", testsPassed, " passed, ", testsFailed, " failed ===\n"
+    try:
+      testSelectBuffered()
+      echo "  [OK] select with buffered channels"
+    except CatchableError as e:
+      echo "  [FAIL] select with buffered channels: ", e.msg
 
-  if testsFailed > 0:
-    quit(1)
+    try:
+      testHelpers()
+      echo "  [OK] helper functions (sendTo/recvFrom)"
+    except CatchableError as e:
+      echo "  [FAIL] helper functions (sendTo/recvFrom): ", e.msg

@@ -6,28 +6,7 @@
 import ../src/arsenal/concurrency
 import std/options
 
-# =============================================================================
-# Test Helpers
-# =============================================================================
-
-var testsPassed = 0
-var testsFailed = 0
-
-template test(name: string, body: untyped) =
-  try:
-    body
-    echo "  [OK] ", name
-    inc testsPassed
-  except CatchableError as e:
-    echo "  [FAIL] ", name, ": ", e.msg
-    echo "  Stack trace:"
-    echo e.getStackTrace()
-    inc testsFailed
-
-template check(cond: bool, msg: string = "") =
-  if not cond:
-    let fullMsg = if msg.len > 0: "Check failed: " & msg else: "Check failed"
-    raise newException(AssertionDefect, fullMsg)
+# Note: Test helpers provided by unittest framework in test_all.nim
 
 # =============================================================================
 # Test 1: Basic go macro
@@ -146,13 +125,13 @@ proc testSelectWithGo() =
 
   # Select should pick ch2
   select:
-    of ch1.tryRecv() -> opt:
+    recv ch1 -> opt:
       if opt.isSome:
         result = "ch1: " & $opt.get
-    of ch2.tryRecv() -> opt:
+    recv ch2 -> opt:
       if opt.isSome:
         result = "ch2: " & opt.get
-    else:
+    default:
       result = "default"
 
   check result == "ch2: hello from go", "Select with go should work, got: " & result
@@ -196,9 +175,8 @@ proc testClosureCapture() =
 # Main
 # =============================================================================
 
-when isMainModule:
-  echo "\n=== Go-Style DSL Tests ===\n"
-
+# Tests are run via test_all.nim using unittest framework
+suite "Go-Style DSL Tests":
   test "basic go macro":
     testBasicGo()
 
@@ -222,8 +200,3 @@ when isMainModule:
 
   test "go with closure capture":
     testClosureCapture()
-
-  echo "\n=== Results: ", testsPassed, " passed, ", testsFailed, " failed ===\n"
-
-  if testsFailed > 0:
-    quit(1)

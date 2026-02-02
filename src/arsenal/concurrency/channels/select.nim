@@ -24,6 +24,13 @@ import std/options
 import std/macros
 import ./channel
 
+# Define `->` as an operator for select syntax binding
+# This allows the parser to accept syntax like: `of ch.tryRecv() -> opt:`
+template `->`*[T](opt: T, name: untyped): T =
+  ## Binding operator for select statement.
+  ## This is a placeholder that should only be used within select macro.
+  opt
+
 type
   SelectOp* = enum
     ## Type of operation in a select case.
@@ -131,73 +138,136 @@ proc selectWithDefault*[T](cases: var openArray[SelectCase[T]]): int =
 macro select*(body: untyped): untyped =
   ## Go-style select statement.
   ##
-  ## Supports syntax:
+  ## Supports clean DSL syntax:
   ## ```nim
   ## select:
-  ##   of ch1.tryRecv() -> value:
-  ##     # Handle received value
-  ##   of ch2.trySend(42):
-  ##     # Handle successful send
-  ##   else:
+  ##   recv ch1 -> opt:
+  ##     # Handle received value (opt is Option[T])
+  ##   recv ch2:
+  ##     # Just check if ch2 is ready
+  ##   send ch3, value:
+  ##     # Send value to ch3
+  ##   default:
   ##     # Default case (optional)
   ## ```
-  ##
-  ## For now, this is a simplified implementation that uses tryRecv/trySend.
-  ## A full implementation would support blocking select with proper channel registration.
 
   result = newStmtList()
 
+  type CaseInfo = object
+    tempVar: NimNode      # Temp var to store tryRecv/trySend result
+    binding: NimNode      # User's binding variable (for recv)
+    body: NimNode         # Case body
+    isRecv: bool          # true for recv, false for send
+
   var hasDefault = false
-  var cases: seq[NimNode] = @[]
-  var bodies: seq[NimNode] = @[]
+  var defaultBody: NimNode
+  var caseInfos: seq[CaseInfo] = @[]
 
   # Parse the body to extract cases
   for child in body:
-    if child.kind == nnkOfBranch:
-      # This is a case branch
-      let cond = child[0]
-      let body = child[1]
-      cases.add(cond)
-      bodies.add(body)
-    elif child.kind == nnkElse:
-      # This is the default branch
-      hasDefault = true
-      let defaultBody = child[0]
+    # Handle "default:" case
+    if child.kind == nnkCall and child.len == 2:
+      if child[0].kind == nnkIdent and $child[0] == "default":
+        hasDefault = true
+        defaultBody = child[1]
 
-      # Generate if-elif-else chain
-      var ifStmt = nnkIfStmt.newTree()
+    # Handle "recv channel -> binding:" case
+    elif child.kind == nnkCommand and child.len >= 2:
+      let cmdIdent = child[0]
 
-      for i in 0..<cases.len:
-        let branch = if i == 0:
-          nnkElifBranch.newTree(cases[i], bodies[i])
-        else:
-          nnkElifBranch.newTree(cases[i], bodies[i])
-        ifStmt.add(branch)
+      if cmdIdent.kind == nnkIdent and $cmdIdent == "recv":
+        # recv ch -> opt: body
+        if child.len == 3 and child[1].kind == nnkInfix:
+          let infixNode = child[1]
+          if infixNode[0].kind == nnkIdent and $infixNode[0] == "->":
+            let channel = infixNode[1]
+            let userBinding = infixNode[2]
+            let caseBody = child[2]
 
-      # Add default as else
-      ifStmt.add(nnkElse.newTree(defaultBody))
-      result.add(ifStmt)
-      return result
+            let tempVar = genSym(nskLet, "selectOpt")
 
-  # No default case - generate blocking loop
-  if cases.len > 0:
-    # Generate: while true: if cond1: body1; break; elif cond2: body2; break; ...
+            caseInfos.add(CaseInfo(
+              tempVar: nnkIdentDefs.newTree(tempVar, newEmptyNode(), newCall(ident("tryRecv"), channel)),
+              binding: userBinding,
+              body: caseBody,
+              isRecv: true
+            ))
+
+      elif cmdIdent.kind == nnkIdent and $cmdIdent == "send":
+        # send ch, value: body
+        if child.len == 3:
+          let args = child[1]
+          let caseBody = child[2]
+
+          var channel, value: NimNode
+
+          if args.kind == nnkInfix and $args[0] == ",":
+            channel = args[1]
+            value = args[2]
+          else:
+            channel = child[1]
+            if child.len > 2 and child[2].kind != nnkStmtList:
+              value = child[2]
+
+          if channel != nil and value != nil:
+            let tempVar = genSym(nskLet, "selectSent")
+
+            caseInfos.add(CaseInfo(
+              tempVar: nnkIdentDefs.newTree(tempVar, newEmptyNode(), newCall(ident("trySend"), channel, value)),
+              binding: nil,
+              body: caseBody,
+              isRecv: false
+            ))
+
+  # Generate the select block
+  # First, declare all temp variables
+  var letSection = nnkLetSection.newTree()
+  for info in caseInfos:
+    letSection.add(info.tempVar)
+
+  # Build the if-elif-else chain
+  var ifStmt = nnkIfStmt.newTree()
+
+  for info in caseInfos:
+    let tempVarName = info.tempVar[0]
+    let condition = if info.isRecv:
+      newCall(ident("isSome"), tempVarName)
+    else:
+      tempVarName  # For send, it's a bool
+
+    let branchBody = if info.isRecv and info.binding != nil:
+      # Create binding for user
+      newStmtList(
+        nnkLetSection.newTree(
+          nnkIdentDefs.newTree(info.binding, newEmptyNode(), tempVarName)
+        ),
+        info.body
+      )
+    else:
+      info.body
+
+    ifStmt.add(nnkElifBranch.newTree(condition, branchBody))
+
+  # Add default case if present
+  if hasDefault:
+    ifStmt.add(nnkElse.newTree(defaultBody))
+    # Generate: let temps...; if cond1: body1 elif cond2: body2 else: default
+    result.add(letSection)
+    result.add(ifStmt)
+  else:
+    # No default - wrap in while loop
     var whileLoop = nnkWhileStmt.newTree(
       ident("true"),
-      newStmtList()
+      newStmtList(
+        letSection,
+        ifStmt,
+        newCall(ident("coroYield"))  # Yield between retries
+      )
     )
-
-    var ifStmt = nnkIfStmt.newTree()
-
-    for i in 0..<cases.len:
-      var branchBody = newStmtList(bodies[i], nnkBreakStmt.newTree(newEmptyNode()))
-      let branch = nnkElifBranch.newTree(cases[i], branchBody)
-      ifStmt.add(branch)
-
-    whileLoop[1].add(ifStmt)
-
-    # Add a small yield between attempts to avoid busy-waiting
-    whileLoop[1].add(newCall(ident("coroYield")))
+    # Add break to each branch
+    for i in 0..<ifStmt.len:
+      if ifStmt[i].kind == nnkElifBranch:
+        ifStmt[i][1].add(nnkBreakStmt.newTree(newEmptyNode()))
 
     result.add(whileLoop)
 

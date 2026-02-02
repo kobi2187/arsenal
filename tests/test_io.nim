@@ -9,28 +9,7 @@ import ../src/arsenal/io/async_socket
 import ../src/arsenal/concurrency/coroutines/coroutine
 import ../src/arsenal/concurrency/scheduler
 
-# =============================================================================
-# Test Helpers
-# =============================================================================
-
-var testsPassed = 0
-var testsFailed = 0
-
-template test(name: string, body: untyped) =
-  try:
-    body
-    echo "  [OK] ", name
-    inc testsPassed
-  except CatchableError as e:
-    echo "  [FAIL] ", name, ": ", e.msg
-    echo "  Stack trace:"
-    echo e.getStackTrace()
-    inc testsFailed
-
-template check(cond: bool, msg: string = "") =
-  if not cond:
-    let fullMsg = if msg.len > 0: "Check failed: " & msg else: "Check failed"
-    raise newException(AssertionDefect, fullMsg)
+# Note: Test helpers provided by unittest framework in test_all.nim
 
 # =============================================================================
 # Test 1: Event loop creation
