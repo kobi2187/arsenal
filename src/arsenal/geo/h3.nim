@@ -119,11 +119,19 @@ proc getBaseCell*(h: H3Index): int =
   ## Get the base cell of an H3 index (0-121).
   int((h.uint64 shr H3_BC_OFFSET) and H3_BC_MASK)
 
+const
+  # Pentagon base cell indices in the H3 system
+  # These are the 12 base cells that contain pentagon cells
+  PENTAGON_BASE_CELLS* = [
+    4, 14, 24, 38, 49, 58, 62, 83, 89, 119, 120, 121
+  ]
+
 proc isPentagon*(h: H3Index): bool =
   ## Check if cell is a pentagon.
   ## There are exactly 12 pentagons at each resolution.
-  # TODO: Look up base cell in pentagon table
-  false
+  ## Pentagons occur at specific base cells that correspond to icosahedron vertices.
+  let baseCell = h.getBaseCell()
+  result = baseCell in PENTAGON_BASE_CELLS
 
 proc getDirectionDigit*(h: H3Index, res: int): int =
   ## Get direction digit at resolution level.
