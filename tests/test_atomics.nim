@@ -129,25 +129,24 @@ suite "Spin Hint":
 suite "Known Limitations":
   # These tests document current limitations that need to be fixed
 
-  test "LIMITATION: float types not supported yet":
-    # TODO: Implement float support using appropriate intrinsics
-    # Currently fails with: "operand type 'NF *' is incompatible with __atomic_load_n"
-    when false:  # Disabled until implemented
+  test "float types supported":
+    # Implemented float support using proper integer casts
+    when true:
       var f = Atomic[float].init(3.14)
       check f.load() == 3.14
       f.store(2.71)
       check f.load() == 2.71
 
-  test "LIMITATION: pointer types not supported yet":
-    # TODO: Implement pointer support with proper casting
-    when false:  # Disabled until implemented
+  test "pointer types supported":
+    # Pointer types work as machine-word integers
+    when true:
       var x = 42
       var p = Atomic[ptr int].init(addr x)
       check p.load() == addr x
 
-  test "LIMITATION: enum types not supported yet":
-    # TODO: Implement enum support via underlying integer type
-    when false:  # Disabled until implemented
+  test "enum types supported":
+    # Enum types work as underlying integer values
+    when true:
       type Color = enum Red, Green, Blue
       var c = Atomic[Color].init(Red)
       check c.load() == Red

@@ -29,6 +29,9 @@ dist/
 tests/test_*
 !tests/test_*.nim
 
+# Compiled binaries in src directory
+src/arsenal/collections/roaring
+
 # Test coverage
 *.lcov
 

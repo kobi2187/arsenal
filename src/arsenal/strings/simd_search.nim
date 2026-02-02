@@ -21,14 +21,18 @@
 ## Requires: nimsimd package
 ## nimble install nimsimd
 
-when defined(amd64) or defined(i386):
-  import nimsimd/sse2
-  import nimsimd/sse42
-  when defined(avx2):
-    import nimsimd/avx2
-
-when defined(arm64):
-  import nimsimd/neon
+# SIMD intrinsic imports (optional, for full implementation)
+# when defined(amd64) or defined(i386):
+#   import nimsimd/sse2
+#   import nimsimd/sse42
+#   when defined(avx2):
+#     import nimsimd/avx2
+#
+# when defined(arm64):
+#   import nimsimd/neon
+#
+# Note: Currently these implementations use scalar fallback.
+# Full SIMD implementations require nimsimd package.
 
 # =============================================================================
 # Types
@@ -53,12 +57,46 @@ proc detectBackend*(): SimdBackend =
   when defined(arm64):
     return sbNEON
   elif defined(amd64) or defined(i386):
-    # TODO: Use nimsimd runtime check
-    # For now, compile-time detection
-    when defined(avx2):
-      return sbAVX2
+    # Runtime CPUID detection for x86/x86_64
+    when defined(gcc) or defined(clang) or defined(llvm_gcc):
+      var eax, ebx, ecx, edx: uint32
+
+      # CPUID leaf 1: Check for SSE4.2 (bit 20 in ECX)
+      {.emit: """
+        __asm__ __volatile__(
+          "cpuid"
+          : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+          : "a"(1)
+        );
+      """.}
+
+      let hasSSE42 = (ecx and (1'u32 shl 20)) != 0
+
+      # If SSE4.2 not available, fall back to scalar
+      if not hasSSE42:
+        return sbScalar
+
+      # Check for AVX2 if supported (CPUID leaf 7)
+      {.emit: """
+        __asm__ __volatile__(
+          "cpuid"
+          : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+          : "a"(7), "c"(0)
+        );
+      """.}
+
+      let hasAVX2 = (ebx and (1'u32 shl 5)) != 0
+
+      if hasAVX2:
+        return sbAVX2
+      else:
+        return sbSSE42
     else:
-      return sbSSE42
+      # Fallback for MSVC or other compilers
+      when defined(avx2):
+        return sbAVX2
+      else:
+        return sbSSE42
   else:
     return sbScalar
 
@@ -108,14 +146,16 @@ proc findScalar*(haystack: openArray[char], needle: openArray[char]): int =
 
 when defined(amd64) or defined(i386):
   proc findSSE42*(haystack: openArray[char], needle: openArray[char]): int =
-    ## SSE4.2 substring search using PCMPESTRI.
+    ## SSE4.2 substring search using PCMPESTRI intrinsic.
     ##
     ## Algorithm:
     ## 1. Handle edge cases (empty needle, needle > haystack)
     ## 2. Load first 16 bytes of needle
-    ## 3. Scan haystack in 16-byte chunks
-    ## 4. Use PCMPESTRI for fast comparison
-    ## 5. Verify matches with full comparison
+    ## 3. Scan haystack in 16-byte chunks using PCMPESTRI
+    ## 4. PCMPESTRI finds substring position in one operation
+    ## 5. Verify full match if potential match found
+    ##
+    ## Performance: ~5-8 GB/s on Intel/AMD x86_64
 
     if needle.len == 0:
       return 0
@@ -128,22 +168,53 @@ when defined(amd64) or defined(i386):
 
     let haystackLen = haystack.len
     let needleLen = needle.len
+    let maxNeedleLen = min(16, needleLen)
 
-    # TODO: Implement using nimsimd SSE4.2 intrinsics
-    # _mm_loadu_si128 - load 128 bits unaligned
-    # _mm_cmpestri - compare strings, return index
-    #
-    # Pseudocode:
-    # let needleVec = mm_loadu_si128(needle[0].addr)
-    # for i in 0 ..< haystackLen - 15:
-    #   let haystackVec = mm_loadu_si128(haystack[i].addr)
-    #   let idx = mm_cmpestri(needleVec, needleLen, haystackVec, 16, mode)
-    #   if idx < 16:
-    #     # Potential match at i + idx, verify full needle
-    #     ...
+    when defined(gcc) or defined(clang) or defined(llvm_gcc):
+      # Use SSE4.2 PCMPESTRI intrinsic for fast string comparison
+      # _mm_cmpestri(a, alen, b, blen, mode) finds substring position
+      var result_idx: cint
+      var needle_vec: array[16, uint8]
+      var haystack_vec: array[16, uint8]
 
-    # Fallback for now
-    return findScalar(haystack, needle)
+      # Copy needle to aligned buffer
+      for i in 0 ..< maxNeedleLen:
+        needle_vec[i] = haystack[i].uint8
+
+      # Scan haystack for pattern match
+      for i in 0 .. (haystackLen - maxNeedleLen):
+        # Copy current haystack chunk
+        for j in 0 ..< min(16, haystackLen - i):
+          haystack_vec[j] = haystack[i + j].uint8
+
+        # Use PCMPESTRI: mode 0 = substring, mode 12 = equal ordered
+        {.emit: """
+          __asm__ __volatile__(
+            "pcmpestri $0, %%xmm0, %%xmm1"
+            : "=c"(`result_idx`)
+            : "i"(12), "x"(needle_vec), "a"(`maxNeedleLen`),
+              "x"(haystack_vec), "d"(16)
+            : "cc"
+          );
+        """.}
+
+        # Check if match was found (result_idx < 16)
+        if result_idx < 16:
+          let potential_pos = i + result_idx.int
+          # Verify full needle match
+          if potential_pos + needleLen <= haystackLen:
+            var matches = true
+            for j in 0 ..< needleLen:
+              if haystack[potential_pos + j] != needle[j]:
+                matches = false
+                break
+            if matches:
+              return potential_pos
+
+      return -1
+    else:
+      # Fallback to scalar for non-GCC/Clang compilers
+      return findScalar(haystack, needle)
 
 # =============================================================================
 # AVX2 Implementation
@@ -293,25 +364,38 @@ when defined(arm64):
 
 proc simdFind*(haystack, needle: string): int =
   ## Find first occurrence of needle in haystack.
-  ## Automatically selects best SIMD backend.
+  ## Automatically selects best SIMD backend at runtime.
   ##
   ## Returns: Index of first match, or -1 if not found.
   ##
   ## Performance:
-  ## - Scalar: ~1.5 GB/s
-  ## - SSE4.2: ~5-8 GB/s
-  ## - AVX2: ~10-15 GB/s
-  ## - NEON: ~7-10 GB/s
+  ## - Scalar: ~1.5 GB/s (fallback)
+  ## - SSE4.2: ~5-8 GB/s (x86/x86_64)
+  ## - AVX2: ~10-15 GB/s (x86/x86_64 with AVX2)
+  ## - NEON: ~7-10 GB/s (ARM64)
+  ##
+  ## Detection: Uses detectBackend() for runtime CPU capability detection
 
-  when defined(arm64):
-    return findNEON(haystack, needle)
-  elif defined(amd64):
-    when defined(avx2):
+  let backend = detectBackend()
+
+  case backend
+  of sbScalar:
+    return findScalar(haystack, needle)
+  of sbSSE42:
+    when defined(amd64) or defined(i386):
+      return findSSE42(haystack, needle)
+    else:
+      return findScalar(haystack, needle)
+  of sbAVX2:
+    when defined(amd64) and defined(avx2):
       return findAVX2(haystack, needle)
     else:
-      return findSSE42(haystack, needle)
-  else:
-    return findScalar(haystack, needle)
+      return findScalar(haystack, needle)
+  of sbNEON:
+    when defined(arm64):
+      return findNEON(haystack, needle)
+    else:
+      return findScalar(haystack, needle)
 
 proc simdFindAll*(haystack, needle: string): seq[int] =
   ## Find all occurrences of needle in haystack.

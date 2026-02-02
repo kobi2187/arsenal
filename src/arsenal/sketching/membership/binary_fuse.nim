@@ -69,18 +69,25 @@ proc mixSplit(key, seed: uint64): uint64 {.inline.} =
 
 proc mulhi(a, b: uint64): uint64 {.inline.} =
   ## High 64 bits of 128-bit product
-  # TODO: Use compiler intrinsic when available
-  let
-    aLo = a and 0xFFFFFFFF'u64
-    aHi = a shr 32
-    bLo = b and 0xFFFFFFFF'u64
-    bHi = b shr 32
-    axbHi = aHi * bHi
-    axbMid = aHi * bLo
-    bxaMid = bHi * aLo
-    axbLo = aLo * bLo
-  var carry = ((axbMid and 0xFFFFFFFF'u64) + (bxaMid and 0xFFFFFFFF'u64) + (axbLo shr 32)) shr 32
-  result = axbHi + (axbMid shr 32) + (bxaMid shr 32) + carry
+  ## Uses compiler intrinsics when available for better performance
+  when defined(gcc) or defined(clang) or defined(llvm_gcc):
+    # GCC/Clang: Use __int128 for 128-bit multiplication
+    {.emit: """
+      `result` = (uint64_t)(((unsigned __int128)`a` * (unsigned __int128)`b`) >> 64);
+    """.}
+  else:
+    # Fallback: 64-bit decomposition
+    let
+      aLo = a and 0xFFFFFFFF'u64
+      aHi = a shr 32
+      bLo = b and 0xFFFFFFFF'u64
+      bHi = b shr 32
+      axbHi = aHi * bHi
+      axbMid = aHi * bLo
+      bxaMid = bHi * aLo
+      axbLo = aLo * bLo
+    var carry = ((axbMid and 0xFFFFFFFF'u64) + (bxaMid and 0xFFFFFFFF'u64) + (axbLo shr 32)) shr 32
+    result = axbHi + (axbMid shr 32) + (bxaMid shr 32) + carry
 
 proc fingerprint8(hash: uint64): uint8 {.inline.} =
   ## Extract 8-bit fingerprint from hash

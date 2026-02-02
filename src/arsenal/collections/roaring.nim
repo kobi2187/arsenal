@@ -161,6 +161,48 @@ proc removeFromArray(c: var Container, value: uint16): bool =
 proc initBitmapContainer(): Container {.inline.} =
   Container(kind: BitmapContainer, bitmap: newSeq[uint64](BitmapContainerWords))
 
+proc addToRun(c: var Container, value: uint16): bool =
+  ## Add value to run container
+  ## Returns true if value was added, false if already present
+  for i in 0..<c.runs.len:
+    let run = c.runs[i]
+
+    # Check if value is already in this run
+    if value >= run.start and value <= run.start + run.length:
+      return false  # Already present
+
+    # Check if value extends this run on the left
+    if value == run.start - 1:
+      c.runs[i].start = value
+      c.runs[i].length += 1
+      # Try to merge with next run if they now overlap
+      if i + 1 < c.runs.len and c.runs[i].start + c.runs[i].length + 1 >= c.runs[i + 1].start:
+        c.runs[i].length = c.runs[i + 1].start + c.runs[i + 1].length - c.runs[i].start
+        c.runs.delete(i + 1)
+      return true
+
+    # Check if value extends this run on the right
+    if value == run.start + run.length + 1:
+      c.runs[i].length += 1
+      # Try to merge with next run if they now overlap
+      if i + 1 < c.runs.len and c.runs[i].start + c.runs[i].length + 1 >= c.runs[i + 1].start:
+        c.runs[i].length = c.runs[i + 1].start + c.runs[i + 1].length - c.runs[i].start
+        c.runs.delete(i + 1)
+      return true
+
+  # Value doesn't extend any existing run, create new run
+  var newRun = (start: value, length: 0'u16)
+
+  # Find insertion point to keep runs sorted
+  var insertIdx = c.runs.len
+  for i in 0..<c.runs.len:
+    if c.runs[i].start > value:
+      insertIdx = i
+      break
+
+  c.runs.insert(newRun, insertIdx)
+  return true
+
 proc addToBitmap(c: var Container, value: uint16) =
   ## Add value to bitmap container
   let
@@ -186,6 +228,42 @@ proc removeFromBitmap(c: var Container, value: uint16): bool =
     c.bitmap[wordIdx] = c.bitmap[wordIdx] and (not mask)
     return true
   false
+
+proc removeFromRun(c: var Container, value: uint16): bool =
+  ## Remove value from run container
+  ## Returns true if value was removed, false if not present
+  for i in 0..<c.runs.len:
+    let run = c.runs[i]
+
+    # Check if value is in this run
+    if value >= run.start and value <= run.start + run.length:
+      # Value is in the run
+      let posInRun = value - run.start
+
+      if posInRun == 0:
+        # Removing from start of run
+        if run.length == 0:
+          # Single-element run, remove entire run
+          c.runs.delete(i)
+        else:
+          # Shrink run from start
+          c.runs[i].start += 1
+          c.runs[i].length -= 1
+      elif posInRun == run.length:
+        # Removing from end of run
+        c.runs[i].length -= 1
+      else:
+        # Removing from middle, split into two runs
+        let secondRunStart = value + 1
+        let secondRunLength = run.start + run.length - secondRunStart
+        c.runs[i].length = posInRun - 1
+
+        # Insert second run after current run
+        c.runs.insert((start: secondRunStart, length: secondRunLength), i + 1)
+
+      return true
+
+  false  # Value not found in any run
 
 # =============================================================================
 # Container Cardinality
@@ -301,11 +379,7 @@ proc add*(rb: var RoaringBitmap, value: uint32) =
     of BitmapContainer:
       rb.containers[idx].addToBitmap(lowBits)
     of RunContainer:
-      # TODO: Implement RunContainer add operation
-      # For now, run containers are treated as opaque containers
-      # Full support would require run-length encoding logic
-      when defined(debug):
-        debugEcho "RunContainer add operation not yet fully implemented"
+      discard rb.containers[idx].addToRun(lowBits)
   else:
     # Create new container
     let insertPos = -(idx + 1)
@@ -361,11 +435,7 @@ proc remove*(rb: var RoaringBitmap, value: uint32): bool =
     if rb.containers[idx].cardinality() <= ArrayContainerMaxSize:
       rb.containers[idx] = rb.containers[idx].bitmapToArray()
   of RunContainer:
-    # TODO: Implement RunContainer remove operation
-    # For now, run containers are treated as opaque containers
-    # Full support would require run-length decoding and removal logic
-    when defined(debug):
-      debugEcho "RunContainer remove operation not yet fully implemented"
+    removed = rb.containers[idx].removeFromRun(lowBits)
 
   # Remove container if empty
   if removed and rb.containers[idx].cardinality() == 0:
@@ -814,7 +884,7 @@ proc fromBytes*(_: typedesc[RoaringBitmap], data: openArray[byte]): RoaringBitma
 # =============================================================================
 
 when isMainModule:
-  import std/[random, times, strformat]
+  import std/[random, times, strformat, strutils]
 
   echo "Roaring Bitmaps - Compressed Integer Sets"
   echo "========================================="
@@ -863,7 +933,7 @@ when isMainModule:
 
   echo "Union (rb2 ∪ rb3): ", union.cardinality()
   echo "Intersection (rb2 ∩ rb3): ", intersection.cardinality()
-  echo "Difference (rb2 \ rb3): ", difference.cardinality()
+  echo "Difference (rb2 \\ rb3): ", difference.cardinality()
   echo "Symmetric difference (rb2 ⊕ rb3): ", symDiff.cardinality()
   echo ""
 
