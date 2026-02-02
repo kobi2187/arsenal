@@ -8,9 +8,11 @@ suite "CPU Feature Detection":
 
   test "detectCpuFeatures returns CpuFeatures object":
     let features = detectCpuFeatures()
-    # Note: Currently returns defaults, full implementation pending
-    check features.vendor == cvUnknown  # Stub implementation
-    check features.brandString.len == 0  # Stub implementation
+    # Should detect actual CPU vendor on x86_64
+    when defined(amd64):
+      check features.vendor != cvUnknown  # Vendor should be detected
+    # On other platforms, vendor might remain Unknown
+    check features.cacheLineSize > 0  # Should have reasonable cache line size
 
   test "x86 features are detected correctly":
     when defined(amd64) or defined(i386):

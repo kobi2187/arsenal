@@ -72,7 +72,7 @@ when defined(amd64) or defined(i386):
   type
     CpuCycleTimer* = object
       ## CPU cycle counter timer
-      start: uint64
+      start*: uint64
 
   proc startCycleTimer*(): CpuCycleTimer {.inline.} =
     ## Start cycle counter timer
@@ -94,7 +94,7 @@ when defined(amd64) or defined(i386):
 type
   HighResTimer* = object
     ## High-resolution timer using std/monotimes
-    start: MonoTime
+    start*: MonoTime
 
 proc startTimer*(): HighResTimer {.inline.} =
   ## Start high-resolution timer (cross-platform)

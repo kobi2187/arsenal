@@ -393,6 +393,10 @@ proc delete*[K, V](t: var SwissTable[K, V], key: K): bool =
 proc len*[K, V](t: SwissTable[K, V]): int {.inline.} =
   t.size
 
+proc capacity*[K, V](t: SwissTable[K, V]): int {.inline.} =
+  ## Return the current capacity (total number of slots).
+  t.capacity
+
 proc clear*[K, V](t: var SwissTable[K, V]) =
   ## Remove all entries.
   ##

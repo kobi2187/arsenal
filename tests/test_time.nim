@@ -1,7 +1,7 @@
 ## Tests for High-Resolution Time Functions
 ## ==========================================
 
-import std/[unittest, monotimes]
+import std/[unittest, monotimes, os, times]
 import ../src/arsenal/time/clock
 
 suite "High-Resolution Timer":
@@ -131,7 +131,6 @@ suite "Time Integration":
     check inMilliseconds(diff) >= 0
 
   test "stdlib time functions work":
-    import std/times
     let t = getTime()
     check t.toUnix() > 0
 
