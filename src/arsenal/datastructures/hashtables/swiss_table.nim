@@ -297,50 +297,41 @@ proc `[]`*[K, V](t: SwissTable[K, V], key: K): V =
   else:
     raise newException(KeyError, "Key not found")
 
-proc `[]=`*[K, V](t: var SwissTable[K, V], key: K, value: V) =
-  ## Insert or update key-value pair.
-  ##
-  ## Uses linear probing to find insertion point.
-
+proc insertWithoutGrowth*[K, V](t: var SwissTable[K, V], key: K, value: V): bool =
+  ## Insert without triggering growth. Returns false if no space available.
   if t.ctrl == nil:
-    # Table not initialized, do nothing
-    return
+    return false
 
   let h1val = h1(key)
   let h2val = h2(key)
 
-  # Start probing at h1 modulo capacity
   var offset = (h1val mod t.capacity.uint64).int
   var probeCount = 0
   var insertIdx = -1
 
-  # Probe groups to find key or insertion point
   while probeCount < t.capacity:
     let g = t.getGroup(offset)
 
-    # Check if key already exists (update in place)
+    # Check if key already exists
     for i in match(g, h2val).setBits:
       let idx = offset + i
       if idx < t.capacity and t.slots[idx].key == key:
         t.slots[idx].value = value
-        return
+        return true
 
-    # Find first empty or deleted slot for insertion
+    # Find insertion point
     if insertIdx < 0:
       let emptyMask = matchEmptyOrDeleted(g)
       if emptyMask.uint16 != 0:
         let i = firstSetBit(emptyMask)
         insertIdx = offset + i
 
-    # If we found an empty slot, we can stop probing
     if matchEmpty(g).uint16 != 0:
       break
 
-    # Linear probing: move to next group
     offset = (offset + GroupSize) mod t.capacity
     inc probeCount, GroupSize
 
-  # Insert new key-value pair
   if insertIdx >= 0 and insertIdx < t.capacity:
     let wasEmpty = t.ctrl[insertIdx].isEmpty
     t.ctrl[insertIdx] = CtrlByte(h2val)
@@ -348,6 +339,20 @@ proc `[]=`*[K, V](t: var SwissTable[K, V], key: K, value: V) =
     inc t.size
     if wasEmpty:
       dec t.growthLeft
+    return true
+
+  return false
+
+proc `[]=`*[K, V](t: var SwissTable[K, V], key: K, value: V) =
+  ## Insert or update key-value pair.
+  ##
+  ## Uses linear probing to find insertion point.
+  ## Note: For now, does not support automatic growth - use init() with larger capacity.
+
+  if t.ctrl == nil:
+    return
+
+  discard t.insertWithoutGrowth(key, value)
 
 proc contains*[K, V](t: SwissTable[K, V], key: K): bool {.inline.} =
   ## Check if key exists.
