@@ -42,11 +42,22 @@ when defined(amd64):
   proc getTime(): uint64 =
     rdtsc()
 elif defined(arm64):
-  # Use ARM PMCCNTR_EL0 register
+  # Use ARM PMCCNTR_EL0 register (Performance Monitors Cycle Counter)
   proc getTime(): uint64 =
-    # TODO: Implement ARM64 cycle counter
-    # For now, fall back to std/times
-    getMonoTime().ticks.uint64
+    ## Read the ARM64 cycle counter register (PMCCNTR_EL0)
+    ## This provides high-resolution CPU cycle counts
+    when defined(gcc) or defined(clang) or defined(llvm_gcc):
+      {.emit: """
+        uint64_t count;
+        __asm__ __volatile__(
+          "mrs %0, pmccntr_el0"
+          : "=r" (count)
+        );
+        `result` = count;
+      """.}
+    else:
+      # Fallback for other compilers
+      getMonoTime().ticks.uint64
 else:
   proc getTime(): uint64 =
     getMonoTime().ticks.uint64
