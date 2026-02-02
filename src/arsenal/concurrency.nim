@@ -71,9 +71,9 @@ export mpmc.MpmcQueue
 proc atomic*[T](value: T): Atomic[T] {.inline.} =
   ## Create an atomic value with ergonomic syntax.
   ##
-  ## **Note**: Currently only supports integer types (int, uint, bool).
-  ## Float, pointer, and enum types are not yet supported.
-  ## See atomic.nim for TODO list.
+  ## Supports: integer types (int, uint, bool), floating point types
+  ## (float32, float64), pointer types (ptr T), and enum types.
+  ## On all platforms: GCC/Clang (Unix, ARM), MSVC (Windows).
   ##
   ## ```nim
   ## var counter = atomic(0)
