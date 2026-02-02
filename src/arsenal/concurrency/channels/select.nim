@@ -22,6 +22,7 @@
 
 import std/options
 import std/macros
+import std/times
 import ./channel
 
 # Define `->` as an operator for select syntax binding
@@ -147,8 +148,20 @@ macro select*(body: untyped): untyped =
   ##     # Just check if ch2 is ready
   ##   send ch3, value:
   ##     # Send value to ch3
+  ##   timeout 1.seconds:
+  ##     # Timeout after 1 second
   ##   default:
-  ##     # Default case (optional)
+  ##     # Default case (optional, cannot use with timeout)
+  ## ```
+  ##
+  ## Or use after() for Go-style timer channels:
+  ## ```nim
+  ## let timer = after(1.seconds)
+  ## select:
+  ##   recv ch -> msg:
+  ##     echo "Got: ", msg.get
+  ##   recv timer -> _:
+  ##     echo "Timeout!"
   ## ```
 
   result = newStmtList()
@@ -160,8 +173,12 @@ macro select*(body: untyped): untyped =
     isRecv: bool          # true for recv, false for send
 
   var hasDefault = false
+  var hasTimeout = false
   var defaultBody: NimNode
+  var timeoutDuration: NimNode
+  var timeoutBody: NimNode
   var caseInfos: seq[CaseInfo] = @[]
+  var timerVars: seq[NimNode] = @[]  # Var declarations for timers
 
   # Parse the body to extract cases
   for child in body:
@@ -175,7 +192,34 @@ macro select*(body: untyped): untyped =
     elif child.kind == nnkCommand and child.len >= 2:
       let cmdIdent = child[0]
 
-      if cmdIdent.kind == nnkIdent and $cmdIdent == "recv":
+      if cmdIdent.kind == nnkIdent and $cmdIdent == "timeout":
+        # timeout duration: body
+        # Parsed as: Command(Ident("timeout"), duration_expr, body_stmtlist)
+        if child.len == 3:
+          hasTimeout = true
+          timeoutDuration = child[1]
+          timeoutBody = child[2]
+
+          # Create timer var and temp var for the result
+          let timerVar = genSym(nskVar, "selectTimer")
+          let tempOpt = genSym(nskLet, "selectTimerOpt")
+
+          # Add timer var: var selectTimer = after(duration)
+          timerVars.add(nnkIdentDefs.newTree(
+            timerVar,
+            newEmptyNode(),
+            newCall(ident("after"), timeoutDuration)
+          ))
+
+          # Add case for checking timer
+          caseInfos.add(CaseInfo(
+            tempVar: nnkIdentDefs.newTree(tempOpt, newEmptyNode(), newCall(ident("tryRecv"), timerVar)),
+            binding: nil,
+            body: timeoutBody,
+            isRecv: true
+          ))
+
+      elif cmdIdent.kind == nnkIdent and $cmdIdent == "recv":
         # recv ch -> opt: body
         if child.len == 3 and child[1].kind == nnkInfix:
           let infixNode = child[1]
@@ -220,7 +264,14 @@ macro select*(body: untyped): untyped =
             ))
 
   # Generate the select block
-  # First, declare all temp variables
+  # First, declare timer vars (if any)
+  var varSection: NimNode
+  if timerVars.len > 0:
+    varSection = nnkVarSection.newTree()
+    for timerVar in timerVars:
+      varSection.add(timerVar)
+
+  # Then declare all temp variables for results
   var letSection = nnkLetSection.newTree()
   for info in caseInfos:
     letSection.add(info.tempVar)
@@ -231,7 +282,7 @@ macro select*(body: untyped): untyped =
   for info in caseInfos:
     let tempVarName = info.tempVar[0]
     let condition = if info.isRecv:
-      newCall(ident("isSome"), tempVarName)
+      newCall(bindSym("isSome"), tempVarName)
     else:
       tempVarName  # For send, it's a bool
 
@@ -251,24 +302,42 @@ macro select*(body: untyped): untyped =
   # Add default case if present
   if hasDefault:
     ifStmt.add(nnkElse.newTree(defaultBody))
-    # Generate: let temps...; if cond1: body1 elif cond2: body2 else: default
+    # Generate: var timers...; let temps...; if cond1: body1 elif cond2: body2 else: default
+    if timerVars.len > 0:
+      result.add(varSection)
     result.add(letSection)
     result.add(ifStmt)
   else:
     # No default - wrap in while loop
+    var loopBody = newStmtList()
+    loopBody.add(letSection)
+    loopBody.add(ifStmt)
+    # Add yield to avoid busy-waiting in coroutine context
+    # For non-coroutine usage, a blocking select would just spin
+    loopBody.add(
+      nnkWhenStmt.newTree(
+        nnkElifBranch.newTree(
+          newCall(ident("declared"), ident("coroYield")),
+          newStmtList(newCall(ident("coroYield")))
+        ),
+        nnkElse.newTree(
+          newStmtList(nnkDiscardStmt.newTree(newEmptyNode()))  # No-op for non-coroutine
+        )
+      )
+    )
+
     var whileLoop = nnkWhileStmt.newTree(
       ident("true"),
-      newStmtList(
-        letSection,
-        ifStmt,
-        newCall(ident("coroYield"))  # Yield between retries
-      )
+      loopBody
     )
     # Add break to each branch
     for i in 0..<ifStmt.len:
       if ifStmt[i].kind == nnkElifBranch:
         ifStmt[i][1].add(nnkBreakStmt.newTree(newEmptyNode()))
 
+    # Generate: var timers...; while true: let temps...; if...; yield
+    if timerVars.len > 0:
+      result.add(varSection)
     result.add(whileLoop)
 
 
@@ -293,3 +362,41 @@ template recvFrom*[T](ch: Chan[T] or BufferedChan[T]): Option[T] =
 template sendTo*[T](ch: Chan[T] or BufferedChan[T], val: T): bool =
   ## Helper to try sending to a channel for select.
   ch.trySend(val)
+
+# =============================================================================
+# Timer Channel for Timeouts
+# =============================================================================
+
+type
+  TimerChan* = object
+    ## A channel that becomes ready after a timeout duration.
+    ## Similar to Go's time.After()
+    deadline: float  # Monotonic time when timer expires
+    fired: bool      # Whether the timer has fired
+
+proc after*(duration: Duration): TimerChan =
+  ## Create a timer channel that fires after the specified duration.
+  ## Similar to Go's time.After()
+  ##
+  ## ```nim
+  ## let timer = after(1.seconds)
+  ## select:
+  ##   recv ch -> msg:
+  ##     echo "Got message"
+  ##   recv timer -> _:
+  ##     echo "Timeout!"
+  ## ```
+  result.deadline = epochTime() + duration.inSeconds.float
+  result.fired = false
+
+proc tryRecv*(timer: var TimerChan): Option[bool] =
+  ## Try to receive from a timer channel.
+  ## Returns Some(true) if timer has expired, None otherwise.
+  if timer.fired:
+    return some(true)
+
+  if epochTime() >= timer.deadline:
+    timer.fired = true
+    return some(true)
+
+  return none(bool)

@@ -302,6 +302,7 @@ export channel.close, channel.isClosed
 # Select
 import concurrency/channels/select
 export select.select, select.sendTo, select.recvFrom, select.`->`
+export select.TimerChan, select.after  # Timer channels for timeout
 
 # Go-style DSL
 import concurrency/dsl/go_macro
