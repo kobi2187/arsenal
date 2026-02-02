@@ -1,7 +1,7 @@
 ## Benchmarks for No-Libc Runtime Operations
 ## ===========================================
 
-import std/[times, strformat]
+import std/[times, strformat, sugar, algorithm]
 import ../src/arsenal/embedded/nolibc
 
 # Benchmark configuration

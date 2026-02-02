@@ -10,18 +10,18 @@
 ##
 ## Each scenario shows both stdlib and arsenal approaches with real code.
 
-import std/[times, strformat, random, sequtils, tables, sets]
+import std/[times, strformat, random, sequtils, tables, sets, strutils, sugar, algorithm]
 
 # Arsenal imports
 import ../src/arsenal/hashing/hashers/wyhash
-import ../src/arsenal/sorting/pdqsort
+import ../src/arsenal/algorithms/sorting/pdqsort
 import ../src/arsenal/sketching/cardinality/hyperloglog
 import ../src/arsenal/time/clock
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "REAL-WORLD SCENARIO BENCHMARKS"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 # ============================================================================
@@ -29,7 +29,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "SCENARIO 1: WEB SERVER - DETECT DUPLICATE REQUESTS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 type
@@ -99,7 +99,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "SCENARIO 2: LOG ANALYTICS - COUNT UNIQUE IPs IN 1M REQUESTS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Generating realistic log entries (1M requests from ~10k unique IPs)..."
@@ -159,7 +159,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "SCENARIO 3: DATA PROCESSING - SORT TIMESTAMPS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Generating 1M timestamps with various patterns..."
@@ -227,7 +227,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "SCENARIO 4: FILE INTEGRITY - HASH FILE CONTENTS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Simulating hashing large file contents..."
@@ -284,7 +284,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "SCENARIO 5: SESSION MANAGEMENT - GENERATE UNIQUE SESSION IDS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Test: Generate 1M unique session IDs"
@@ -328,7 +328,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "SCENARIO 6: ANALYTICS - TRACK MULTIPLE METRICS SIMULTANEOUSLY"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Test: Track 3 metrics on 1M events"
@@ -368,9 +368,9 @@ block:
     echo &"    {endpoint}: {count} requests"
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SUMMARY"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Arsenal Advantages in Real-World Scenarios:"
@@ -402,6 +402,6 @@ echo "   - Scales to arbitrary stream sizes"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "Real-world scenario benchmarks completed!"
-echo "=" * 80
+echo repeat("=", 80)

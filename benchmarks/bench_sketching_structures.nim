@@ -9,12 +9,18 @@
 ##
 ## These structures provide significant space/time trade-offs compared to exact methods.
 
-import std/[times, strformat, random, math, sequtils]
+import std/[times, strformat, random, math, sequtils, strutils, sugar, algorithm]
+
+# Helper functions
+proc calculateSpeedup(arsenal: float, stdlib: float): string =
+  let speedup = stdlib / arsenal
+  let percentage = (speedup - 1.0) * 100.0
+  return &"({speedup:.2f}x, {percentage:+.1f}%)"
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SKETCHING & MEMBERSHIP TESTING STRUCTURES"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 # ============================================================================
@@ -22,7 +28,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "1. BLOOM FILTERS - SPACE-EFFICIENT MEMBERSHIP TESTING"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Test: Check if a value is in a set (with false positives)"
@@ -77,7 +83,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "2. BINARY FUSE FILTERS - IMPROVED BLOOM FILTERS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Binary Fuse Filter: Newer algorithm, smaller than Bloom"
@@ -107,7 +113,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "3. XOR FILTERS - MINIMAL PERFECT HASHING"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "XOR Filter: Variation using XOR constraints instead of hash functions"
@@ -135,7 +141,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "4. T-DIGEST - STREAMING QUANTILE ESTIMATION"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Test: Estimate percentiles from 1M measurements"
@@ -188,7 +194,7 @@ block:
   echo &"Arsenal T-Digest:   {tdigestTime:.4f}s (simulated)"
   echo &"  p50: {avg:.2f}ms (estimated)"
   echo &"  Memory: 10-50 KB (compression=default)"
-  echo &"  Speedup: {calculateSpeedup(tdigestTime, stdlibTime):.2f}x"
+  echo &"  Speedup: {calculateSpeedup(tdigestTime, stdlibTime)}"
 
 echo ""
 echo "T-Digest Advantages:"
@@ -209,7 +215,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "5. PRACTICAL COMPARISON - WHEN TO USE WHICH"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Use Case: Track 1M unique user IDs"
@@ -240,7 +246,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "6. MEMORY EFFICIENCY COMPARISON"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Cardinality Counting (1M items):"
@@ -268,7 +274,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "7. FILTER CONSTRUCTION TIME"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Building filters for 1M items:"
@@ -286,16 +292,9 @@ echo "  - Binary Fuse: Slower build, good lookup, compact"
 echo "  - XOR: Fast build, good lookup, very compact"
 echo "  - HashSet: Fast build, fair lookup, uses space"
 echo ""
-
-proc calculateSpeedup(arsenal: float, stdlib: float): string =
-  let speedup = stdlib / arsenal
-  let percentage = (speedup - 1.0) * 100.0
-  return &"({speedup:.2f}x, {percentage:+.1f}%)"
-
-echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SUMMARY"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Bloom Filters:"
@@ -328,6 +327,6 @@ echo "  ✓ 80,000x less memory than storing all values"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "Sketching structures benchmarks completed!"
-echo "=" * 80
+echo repeat("=", 80)

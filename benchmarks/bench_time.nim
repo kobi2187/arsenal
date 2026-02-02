@@ -1,7 +1,7 @@
 ## Benchmarks for High-Resolution Time Functions
 ## ===============================================
 
-import std/[times, strformat, monotimes]
+import std/[times, strformat, monotimes, sugar, algorithm]
 import ../src/arsenal/time/clock
 
 proc benchmark(name: string, iterations: int, fn: proc()) =

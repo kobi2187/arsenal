@@ -10,12 +10,12 @@
 ##
 ## These structures provide high-performance alternatives to traditional synchronization.
 
-import std/[times, strformat, random]
+import std/[times, strformat, random, strutils, sugar, algorithm]
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "CONCURRENCY PRIMITIVES"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 # ============================================================================
@@ -23,7 +23,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "1. ATOMIC OPERATIONS - LOCK-FREE SYNCHRONIZATION"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Test: Atomic increment vs mutex lock"
@@ -86,7 +86,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "2. SPINLOCKS - BUSY-WAIT SYNCHRONIZATION"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Spinlock Types:"
@@ -138,7 +138,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "3. LOCK-FREE QUEUES - HIGH-PERFORMANCE MESSAGE PASSING"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Queue Types:"
@@ -206,7 +206,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "4. CHANNELS - GO-STYLE ASYNC PROGRAMMING"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Arsenal Channels:"
@@ -250,7 +250,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "5. COROUTINES - LIGHTWEIGHT ASYNCHRONOUS EXECUTION"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Coroutine Characteristics:"
@@ -296,7 +296,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "6. MEMORY ORDERING - SYNCHRONIZATION PRIMITIVES"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Memory Orders (cost vs sync strength):"
@@ -322,7 +322,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "7. WHEN TO USE EACH PRIMITIVE"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Task                        | Stdlib      | Arsenal"
@@ -345,9 +345,9 @@ echo "Coroutines:   100-1000x less memory than threads"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SUMMARY"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Atomics:"
@@ -387,6 +387,6 @@ echo "  ✗ Still need threads for CPU work"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "Concurrency primitives benchmarks completed!"
-echo "=" * 80
+echo repeat("=", 80)

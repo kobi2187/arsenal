@@ -1,7 +1,7 @@
 ## Benchmarks for Bit Manipulation Operations
 ## ============================================
 
-import std/[times, strformat]
+import std/[times, strformat, sugar, algorithm]
 import ../src/arsenal/bits/bitops
 
 proc benchmark(name: string, iterations: int, fn: proc()) =

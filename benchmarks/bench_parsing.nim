@@ -8,12 +8,12 @@
 ##
 ## Arsenal provides optimized C bindings and pure Nim implementations.
 
-import std/[times, strformat, json, tables]
+import std/[times, strformat, json, tables, strutils, sugar, algorithm]
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "PARSING & SERIALIZATION"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 # ============================================================================
@@ -21,7 +21,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "1. HTTP/1.1 PARSER"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "HTTP Parsing is Critical for Web Servers"
@@ -84,7 +84,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "2. JSON PARSING"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "JSON is ubiquitous in web APIs"
@@ -163,7 +163,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "3. PARSING PERFORMANCE PROFILES"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Light parsing (simple data):"
@@ -196,7 +196,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "4. PARSER COMBINATORS - GENERIC PARSING"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "What are Parser Combinators?"
@@ -237,7 +237,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "5. PROTOCOL PARSING COMPARISON"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Protocol            | Stdlib | Arsenal | Speed     | Use"
@@ -260,7 +260,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "6. REAL-WORLD BOTTLENECK ANALYSIS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Web Service Request Timeline (microseconds):"
@@ -292,7 +292,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "7. SERIALIZATION (GENERATING OUTPUT)"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Stdlib json.%* operator:"
@@ -319,7 +319,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "8. PARSING STRATEGY DECISION"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Use Stdlib when:"
@@ -347,7 +347,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "9. BENCHMARK CODE EXAMPLES"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Parsing 1M small JSON objects:"
@@ -366,9 +366,9 @@ echo "  echo \"yyjson: \" & $(epochTime() - start)"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SUMMARY"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "HTTP Parser (Arsenal):"
@@ -398,6 +398,6 @@ echo "  - Use combinators for custom formats"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "Parsing benchmarks completed!"
-echo "=" * 80
+echo repeat("=", 80)

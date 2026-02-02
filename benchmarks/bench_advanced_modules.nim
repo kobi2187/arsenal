@@ -10,7 +10,7 @@
 ## Each example shows small, focused tests that demonstrate API usage
 ## while measuring performance characteristics.
 
-import std/[times, strformat, random, math, sequtils]
+import std/[times, strformat, random, math, sequtils, strutils, sugar, algorithm]
 
 # Arsenal imports - advanced modules
 import ../src/arsenal/bits/bitops
@@ -37,12 +37,12 @@ proc benchmarkOps(name: string, iterations: int, fn: proc()) =
 # 1. BIT OPERATIONS
 # ============================================================================
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "1. BIT OPERATIONS - STDLIB vs ARSENAL"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
-var testValue: uint64 = 0x0F0F0F0F0F0F0F0F
+var testValue: uint64 = 0x0F0F0F0F0F0F0F0F'u64
 
 echo "Test: Bit manipulation operations"
 echo ""
@@ -87,7 +87,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "2. POPULATION COUNT - STDLIB vs ARSENAL"
-echo("=" * 80)
+echo(repeat("=", 80))
 echo ""
 
 echo "Test: Count set bits (population count / Hamming weight)"
@@ -141,7 +141,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "3. RANDOM NUMBER GENERATION - STDLIB vs ARSENAL"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Test: Generate random 64-bit integers"
@@ -193,7 +193,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "4. HIGH-RESOLUTION TIMING"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Test: Measure timing precision and overhead"
@@ -230,7 +230,7 @@ block:
 # ============================================================================
 echo ""
 echo "5. ADVANCED BIT MANIPULATION PATTERNS"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Test: Common bit manipulation patterns"
@@ -280,7 +280,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "6. COMPRESSION ALGORITHMS - STDLIB vs ARSENAL"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Test: Compress/decompress highly repetitive data"
@@ -312,7 +312,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "7. MEMORY USAGE COMPARISON"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Storage overhead comparison for 1 million items:"
@@ -343,9 +343,9 @@ echo ""
 # SUMMARY
 # ============================================================================
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SUMMARY: ARSENAL ADVANTAGES"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "BIT OPERATIONS:"
@@ -379,6 +379,6 @@ echo "  - Probabilistic structures: Fixed memory with trade-offs"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "All advanced benchmarks completed!"
-echo "=" * 80
+echo repeat("=", 80)

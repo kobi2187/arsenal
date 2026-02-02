@@ -9,12 +9,12 @@
 ##
 ## These techniques provide massive speedups for specific data types.
 
-import std/[times, strformat, random, math, sequtils]
+import std/[times, strformat, random, math, sequtils, strutils, sugar, algorithm]
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "TIME-SERIES & SPECIALIZED COMPRESSION"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 # ============================================================================
@@ -22,7 +22,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "1. GORILLA COMPRESSION - TIME-SERIES OPTIMIZED"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "What is Gorilla?"
@@ -104,7 +104,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "2. STREAMVBYTE - INTEGER SEQUENCE COMPRESSION"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "What is StreamVByte?"
@@ -159,7 +159,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "3. GENERAL COMPRESSION - LZ4 & ZSTANDARD"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "LZ4 - Maximum Speed"
@@ -201,7 +201,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "4. DELTA ENCODING - SORTED DATA"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Delta Encoding Concept:"
@@ -237,7 +237,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "5. COMPRESSION SELECTION GUIDE"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Is data time-series (timestamp + metric)?"
@@ -279,7 +279,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "6. REAL-WORLD COMPRESSION SCENARIOS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Scenario 1: Monitoring System (Prometheus-like)"
@@ -318,7 +318,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "7. MEMORY-SPEED TRADE-OFFS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Compression affects different resource bottlenecks:"
@@ -343,7 +343,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "8. COMPRESSION ALGORITHM REFERENCE"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Algorithm    | Speed       | Ratio    | Use Case"
@@ -372,7 +372,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "9. HOW TO BENCHMARK COMPRESSION"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Key Metrics:"
@@ -391,9 +391,9 @@ echo "  ✓ Measure end-to-end application impact"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SUMMARY"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Time-Series (Gorilla):"
@@ -425,6 +425,6 @@ echo "  4. Measure actual impact on application"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "Time-series & compression benchmarks completed!"
-echo "=" * 80
+echo repeat("=", 80)
