@@ -24,9 +24,10 @@
 
 import std/options
 
-# Compile-time warning for unsupported platforms
+# Platform support status
 when defined(vcc):
-  {.warning: "MSVC atomics not implemented! Falling back to NON-ATOMIC operations. DO NOT use in production on Windows with MSVC. See atomic.nim TODOs.".}
+  # MSVC atomics supported via _InterlockedXxx intrinsics
+  discard
 
 type
   MemoryOrder* = enum
