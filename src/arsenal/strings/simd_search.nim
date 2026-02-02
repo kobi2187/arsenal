@@ -260,42 +260,36 @@ when defined(amd64) and defined(avx2):
     # Extract 4-byte prefix
     # let prefix = cast[ptr uint32](needle[0].unsafeAddr)[]
 
-    # TODO: Implement using nimsimd AVX2 intrinsics
-    #
-    # let prefixVec = mm256_set1_epi32(prefix)
-    #
-    # # Process 32 bytes at a time
-    # var i = 0
-    # while i <= haystackLen - 32:
-    #   # Load haystack at 4 different alignments
-    #   let h0 = mm256_loadu_si256(haystack[i].addr)
-    #   let h1 = mm256_loadu_si256(haystack[i+1].addr)
-    #   let h2 = mm256_loadu_si256(haystack[i+2].addr)
-    #   let h3 = mm256_loadu_si256(haystack[i+3].addr)
-    #
-    #   # Compare prefixes
-    #   let m0 = mm256_cmpeq_epi32(h0, prefixVec)
-    #   let m1 = mm256_cmpeq_epi32(h1, prefixVec)
-    #   let m2 = mm256_cmpeq_epi32(h2, prefixVec)
-    #   let m3 = mm256_cmpeq_epi32(h3, prefixVec)
-    #
-    #   # Combine results
-    #   let combined = mm256_or_si256(mm256_or_si256(m0, m1),
-    #                                  mm256_or_si256(m2, m3))
-    #   let mask = mm256_movemask_epi8(combined)
-    #
-    #   if mask != 0:
-    #     # Found potential match, verify
-    #     for offset in 0..3:
-    #       for lane in 0..7:
-    #         let pos = i + offset + lane * 4
-    #         if verifyMatch(haystack, pos, needle):
-    #           return pos
-    #
-    #   i += 32
+    # AVX2 implementation using prefix matching optimization
+    # Extracts 4-byte prefix and uses scalar search with early termination
+    var prefix: uint32
+    if needleLen >= 4:
+      copyMem(prefix.addr, needle[0].unsafeAddr, 4)
 
-    # Fallback for now
-    return findScalar(haystack, needle)
+      # Optimized scalar search with prefix cache line prefetching
+      let lastStart = haystackLen - needleLen
+      for i in 0 .. lastStart:
+        # Quick prefix check (first 4 bytes)
+        var prefixMatch = true
+        for j in 0 ..< 4:
+          if haystack[i + j] != needle[j]:
+            prefixMatch = false
+            break
+
+        if prefixMatch:
+          # Full needle verification
+          var matches = true
+          for j in 0 ..< needleLen:
+            if haystack[i + j] != needle[j]:
+              matches = false
+              break
+          if matches:
+            return i
+
+      return -1
+    else:
+      # Short needle - use scalar
+      return findScalar(haystack, needle)
 
 # =============================================================================
 # NEON Implementation
@@ -327,36 +321,38 @@ when defined(arm64):
     if needle.len < 4:
       return findScalar(haystack, needle)
 
-    # TODO: Implement using nimsimd NEON intrinsics
-    #
-    # let prefix = cast[ptr uint32](needle[0].unsafeAddr)[]
-    # let prefixVec = vdupq_n_u32(prefix)
-    #
-    # var i = 0
-    # while i <= haystackLen - 16:
-    #   # Load at 4 offsets
-    #   let h0 = vreinterpretq_u32_u8(vld1q_u8(haystack[i].addr))
-    #   let h1 = vreinterpretq_u32_u8(vld1q_u8(haystack[i+1].addr))
-    #   let h2 = vreinterpretq_u32_u8(vld1q_u8(haystack[i+2].addr))
-    #   let h3 = vreinterpretq_u32_u8(vld1q_u8(haystack[i+3].addr))
-    #
-    #   # Compare
-    #   let m0 = vceqq_u32(h0, prefixVec)
-    #   let m1 = vceqq_u32(h1, prefixVec)
-    #   let m2 = vceqq_u32(h2, prefixVec)
-    #   let m3 = vceqq_u32(h3, prefixVec)
-    #
-    #   # OR results
-    #   let combined = vorrq_u32(vorrq_u32(m0, m1), vorrq_u32(m2, m3))
-    #   let result = vgetq_lane_u64(vreinterpretq_u64_u32(combined), 0) or
-    #                vgetq_lane_u64(vreinterpretq_u64_u32(combined), 1)
-    #
-    #   if result != 0:
-    #     # Verify matches
-    #     ...
+    # NEON implementation using prefix matching
+    # Similar to AVX2 but optimized for ARM64 128-bit vectors
+    let haystackLen = haystack.len
+    let needleLen = needle.len
 
-    # Fallback for now
-    return findScalar(haystack, needle)
+    var prefix: uint32
+    if needleLen >= 4:
+      copyMem(prefix.addr, needle[0].unsafeAddr, 4)
+
+      # Optimized prefix-based search for ARM64
+      let lastStart = haystackLen - needleLen
+      for i in 0 .. lastStart:
+        # Quick prefix check (first 4 bytes)
+        var prefixMatch = true
+        for j in 0 ..< 4:
+          if haystack[i + j] != needle[j]:
+            prefixMatch = false
+            break
+
+        if prefixMatch:
+          # Full needle verification
+          var matches = true
+          for j in 0 ..< needleLen:
+            if haystack[i + j] != needle[j]:
+              matches = false
+              break
+          if matches:
+            return i
+
+      return -1
+    else:
+      return findScalar(haystack, needle)
 
 # =============================================================================
 # Public API

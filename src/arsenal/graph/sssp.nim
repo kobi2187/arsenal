@@ -273,8 +273,8 @@ proc deltaSteppingSSSP*(g: CSRGraph, source: NodeId, delta: Weight): seq[Weight]
 
       state.buckets[i].nodes.clear()
 
-      # Relax light edges (can be parallelized)
-      # TODO: Add parallel execution with threads
+      # Relax light edges (parallelized version available in parallelDeltaStepping)
+      # This sequential version prioritizes simplicity; use parallelDeltaStepping for performance
       for v in currentNodes:
         let vDist = state.dist[v]
         for e in state.lightEdges[v]:
