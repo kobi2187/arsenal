@@ -43,4 +43,4 @@ include test_nolibc
 include test_random
 include test_select
 include test_swiss_table
-# include test_embedded_hal
+include test_embedded_hal
