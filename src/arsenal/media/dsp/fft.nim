@@ -1,3 +1,4 @@
+# {.experimental: "codeReordering".}
 ## Fast Fourier Transform (FFT)
 ## ============================
 ##
@@ -35,15 +36,14 @@ import std/complex
 # Complex Number Types
 # =============================================================================
 
-type
-  Complex64* = Complex64  ## Re-export from std/complex (float64 real/imag)
+# type
+  # Complex64* = Complex64  ## Re-export from std/complex (float64 real/imag)
 
 # =============================================================================
 # FFT Constants
 # =============================================================================
 
-const
-  TwoPi = 2.0 * PI
+const TwoPi = 2.0 * PI
 
 # =============================================================================
 # Bit Reversal
@@ -57,6 +57,14 @@ proc reverseBits(x: int, bits: int): int {.inline.} =
     result = (result shl 1) or (n and 1)
     n = n shr 1
 
+proc fastLog2(n: int): int {.inline.} =
+  ## Fast log2 for powers of 2
+  result = 0
+  var x = n
+  while x > 1:
+    x = x shr 1
+    inc result
+    
 proc bitReversePermute*[T](data: var openArray[T]) =
   ## Bit-reverse permutation (in-place)
   ## Required preprocessing for decimation-in-time FFT
@@ -68,13 +76,6 @@ proc bitReversePermute*[T](data: var openArray[T]) =
     if i < j:
       swap(data[i], data[j])
 
-proc fastLog2(n: int): int {.inline.} =
-  ## Fast log2 for powers of 2
-  result = 0
-  var x = n
-  while x > 1:
-    x = x shr 1
-    inc result
 
 # =============================================================================
 # FFT Core Algorithm (Radix-2 Cooley-Tukey)

@@ -46,7 +46,7 @@
 ## ```
 
 import std/[math, complex]
-import arsenal/media/dsp/fft
+import fft
 
 # =============================================================================
 # MDCT/IMDCT Types

@@ -4,8 +4,8 @@
 ## Tests for audio format conversion, resampling, MDCT, ring buffer, and mixing
 
 import std/[unittest, math, complex]
-import arsenal/media/audio/[format, resampling, ringbuffer, mixing]
-import arsenal/media/dsp/mdct
+import ../src/arsenal/media/audio/[format, resampling, ringbuffer, mixing]
+import ../src/arsenal/media/dsp/mdct
 
 suite "Audio Format Conversion":
   test "int16 to float32 conversion":

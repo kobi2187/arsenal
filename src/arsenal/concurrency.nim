@@ -282,7 +282,7 @@ export options.Option, options.some, options.none, options.isSome, options.isNon
 import concurrency/coroutines/coroutine
 export coroutine.Coroutine, coroutine.CoroutineState
 export coroutine.newCoroutine, coroutine.resume, coroutine.destroy
-export coroutine.isFinished, coroutine.isSuspended, coroutine.isReady
+export coroutine.isFinished, coroutine.isSuspended #, coroutine.isReady
 export coroutine.coroYield, coroutine.running
 
 # Scheduler

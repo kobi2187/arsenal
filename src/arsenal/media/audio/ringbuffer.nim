@@ -101,7 +101,7 @@ proc destroy*[T](rb: var RingBuffer[T]) =
 # Status Queries
 # =============================================================================
 
-proc available*[T](rb: RingBuffer[T]): int {.inline.} =
+proc available*[T](rb: var RingBuffer[T]): int {.inline.} =
   ## Get number of samples available for reading
   ##
   ## Returns how many samples can be read without blocking
@@ -109,7 +109,7 @@ proc available*[T](rb: RingBuffer[T]): int {.inline.} =
   let read = rb.readPos.load(moAcquire)
   result = write - read
 
-proc space*[T](rb: RingBuffer[T]): int {.inline.} =
+proc space*[T](rb: var RingBuffer[T]): int {.inline.} =
   ## Get number of samples that can be written
   ##
   ## Returns free space in buffer
@@ -117,15 +117,15 @@ proc space*[T](rb: RingBuffer[T]): int {.inline.} =
   let read = rb.readPos.load(moAcquire)
   result = rb.capacity - (write - read)
 
-proc isEmpty*[T](rb: RingBuffer[T]): bool {.inline.} =
+proc isEmpty*[T](rb: var RingBuffer[T]): bool {.inline.} =
   ## Check if ring buffer is empty
   result = rb.available() == 0
 
-proc isFull*[T](rb: RingBuffer[T]): bool {.inline.} =
+proc isFull*[T](rb: var RingBuffer[T]): bool {.inline.} =
   ## Check if ring buffer is full
   result = rb.space() == 0
 
-proc fillLevel*[T](rb: RingBuffer[T]): float64 {.inline.} =
+proc fillLevel*[T](rb: var RingBuffer[T]): float64 {.inline.} =
   ## Get buffer fill level (0.0 = empty, 1.0 = full)
   ##
   ## Useful for monitoring buffer health
@@ -358,7 +358,7 @@ proc reset*[T](rb: var RingBuffer[T]) =
 # Utilities
 # =============================================================================
 
-proc underrunDetected*[T](rb: RingBuffer[T], threshold: float64 = 0.1): bool =
+proc underrunDetected*[T](rb: var RingBuffer[T], threshold: float64 = 0.1): bool =
   ## Detect potential underrun condition
   ##
   ## threshold: Fill level below which underrun is likely (0.0-1.0)
@@ -367,7 +367,7 @@ proc underrunDetected*[T](rb: RingBuffer[T], threshold: float64 = 0.1): bool =
   ## Returns: true if buffer is dangerously low
   result = rb.fillLevel() < threshold
 
-proc overrunRisk*[T](rb: RingBuffer[T], threshold: float64 = 0.9): bool =
+proc overrunRisk*[T](rb: var RingBuffer[T], threshold: float64 = 0.9): bool =
   ## Detect potential overrun condition
   ##
   ## threshold: Fill level above which overrun is likely (0.0-1.0)

@@ -14,24 +14,29 @@ import std/os
 # Import all test modules
 include test_config
 include test_strategies
-
-# Platform tests (when implemented)
-# when defined(amd64) or defined(i386):
-#   include test_bits
-
-# Concurrency tests (when implemented)
-# include test_atomics
-# include test_spinlock
-# include test_spsc_queue
-# include test_mpmc_queue
-# include test_coroutines
-# include test_channels
-# include test_select
-
-# Memory tests (when implemented)
-# include test_allocator
-
-# Hashing tests (when implemented)
-# include test_hasher
-
-# Tests are run automatically by unittest when isMainModule
+include test_allocators
+include test_atomics
+include test_audio_media
+include test_bits
+include test_channels
+include test_coroutines
+include test_channels_simple
+include test_concurrency_ergonomic
+include test_spinlock
+include test_spsc
+include test_simd
+include test_fft
+include test_fixed
+include test_go_dsl
+include test_hash_functions
+include test_hashing
+include test_io
+include test_libaco
+include test_minicoro
+include test_mpmc
+include test_new_algorithms
+include test_nolibc
+include test_random
+include test_select
+include test_swiss_table
+# include test_embedded_hal

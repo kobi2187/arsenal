@@ -213,7 +213,7 @@ proc float32ToInt24*(input: openArray[float32], output: var openArray[int32],
         elif scaled <= -8388608.0'f32: -8388608
         else: scaled.int32
 
-      output[i] = clamped shl 8  # Pack in upper 24 bits
+      output[i] = int32(clamped shl 8)  # Pack in upper 24 bits
 
   else:
     for i in 0..<input.len:
@@ -224,7 +224,7 @@ proc float32ToInt24*(input: openArray[float32], output: var openArray[int32],
         elif scaled <= -8388608.0'f32: -8388608
         else: scaled.int32
 
-      output[i] = clamped shl 8
+      output[i] = (clamped shl 8).int32  # Pack in upper 24 bits
 
 proc float32ToInt32*(input: openArray[float32], output: var openArray[int32]) {.inline.} =
   ## Convert float32 (±1.0) to int32
@@ -243,7 +243,7 @@ proc float32ToInt32*(input: openArray[float32], output: var openArray[int32]) {.
       elif scaled <= -2147483648.0'f32: -2147483648
       else: scaled.int32
 
-    output[i] = clamped
+    output[i] = clamped.int32
 
 proc float64ToInt16*(input: openArray[float64], output: var openArray[int16],
                      useDither: bool = false) {.inline.} =
@@ -364,20 +364,20 @@ proc stereoToMonoInterleaved*[T](stereo: openArray[T], mono: var openArray[T]) {
 # Utility Functions
 # =============================================================================
 
-proc normalizePeak*[T](samples: var openArray[T], targetPeak: T) =
-  ## Normalize audio to target peak amplitude
-  ##
-  ## Scales entire buffer so highest peak reaches targetPeak
-  ## Preserves dynamic range
-  when T is float32 or T is float64:
-    var maxAbs = T(0)
-    for s in samples:
-      maxAbs = max(maxAbs, abs(s))
+# proc normalizePeak*[T](samples: var openArray[T], targetPeak: T) =
+#   ## Normalize audio to target peak amplitude
+#   ##
+#   ## Scales entire buffer so highest peak reaches targetPeak
+#   ## Preserves dynamic range
+#   when T is float32 or T is float64:
+#     var maxAbs = T(0)
+#     for s in samples:
+#       maxAbs = max(maxAbs, abs(s))
 
-    if maxAbs > T(1e-10):  # Avoid division by zero
-      let scale = targetPeak / maxAbs
-      for i in 0..<samples.len:
-        samples[i] = samples[i] * scale
+#     if maxAbs > T(1e-10):  # Avoid division by zero
+#       let scale = targetPeak / maxAbs
+#       for i in 0..<samples.len:
+#         samples[i] = samples[i] * scale
 
 proc applyGain*[T](samples: var openArray[T], gainDb: float32) =
   ## Apply gain in decibels

@@ -180,9 +180,9 @@ suite "Fixed-Point - Practical Use Cases":
       a + (b - a) * t
 
     let start = toFixed16(0.0)
-    let end = toFixed16(10.0)
+    let fin = toFixed16(10.0)
     let t = toFixed16(0.5)  # 50%
-    let midpoint = lerp(start, end, t)
+    let midpoint = lerp(start, fin, t)
 
     check abs(midpoint.toFloat() - 5.0) < 0.1
 

@@ -201,7 +201,6 @@ macro select*(body: untyped): untyped =
 
     result.add(whileLoop)
 
-  result
 
 # =============================================================================
 # Helper Procs for Select-like Operations
