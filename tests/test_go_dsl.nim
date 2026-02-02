@@ -124,17 +124,15 @@ proc testSelectWithGo() =
   runAll()
 
   # Select should pick ch2
-  # Note: Using if-elif-else instead of select due to parser limitations
-  block selectBlock:
-    let opt1 = ch1.tryRecv()
-    if opt1.isSome:
-      result = "ch1: " & $opt1.get
-      break selectBlock
-    let opt2 = ch2.tryRecv()
-    if opt2.isSome:
-      result = "ch2: " & opt2.get
-      break selectBlock
-    result = "default"
+  select:
+    recv ch1 -> opt:
+      if opt.isSome:
+        result = "ch1: " & $opt.get
+    recv ch2 -> opt:
+      if opt.isSome:
+        result = "ch2: " & opt.get
+    default:
+      result = "default"
 
   check result == "ch2: hello from go", "Select with go should work, got: " & result
 
