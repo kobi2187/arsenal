@@ -301,7 +301,7 @@ export channel.close, channel.isClosed
 
 # Select
 import concurrency/channels/select
-export select.select, select.sendTo, select.recvFrom
+export select.select, select.sendTo, select.recvFrom, select.`->`
 
 # Go-style DSL
 import concurrency/dsl/go_macro

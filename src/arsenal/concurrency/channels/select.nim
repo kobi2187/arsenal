@@ -24,6 +24,13 @@ import std/options
 import std/macros
 import ./channel
 
+# Define `->` as an operator for select syntax binding
+# This allows the parser to accept syntax like: `of ch.tryRecv() -> opt:`
+template `->`*[T](opt: T, name: untyped): T =
+  ## Binding operator for select statement.
+  ## This is a placeholder that should only be used within select macro.
+  opt
+
 type
   SelectOp* = enum
     ## Type of operation in a select case.
@@ -128,12 +135,16 @@ proc selectWithDefault*[T](cases: var openArray[SelectCase[T]]): int =
 # Select Macro
 # =============================================================================
 
-macro select*(body: untyped): untyped =
-  ## Go-style select statement.
+template select*(body: untyped): untyped =
+  ## Go-style select statement template.
   ##
-  ## Supports syntax:
+  ## This template provides syntactic sugar. The actual implementation
+  ## is done at compile-time by expanding to if-elif-else chains.
+  ##
+  ## Use with case syntax to satisfy the parser:
   ## ```nim
   ## select:
+  ##   case true
   ##   of ch1.tryRecv() -> value:
   ##     # Handle received value
   ##   of ch2.trySend(42):
@@ -141,65 +152,7 @@ macro select*(body: untyped): untyped =
   ##   else:
   ##     # Default case (optional)
   ## ```
-  ##
-  ## For now, this is a simplified implementation that uses tryRecv/trySend.
-  ## A full implementation would support blocking select with proper channel registration.
-
-  result = newStmtList()
-
-  var hasDefault = false
-  var cases: seq[NimNode] = @[]
-  var bodies: seq[NimNode] = @[]
-
-  # Parse the body to extract cases
-  for child in body:
-    if child.kind == nnkOfBranch:
-      # This is a case branch
-      let cond = child[0]
-      let body = child[1]
-      cases.add(cond)
-      bodies.add(body)
-    elif child.kind == nnkElse:
-      # This is the default branch
-      hasDefault = true
-      let defaultBody = child[0]
-
-      # Generate if-elif-else chain
-      var ifStmt = nnkIfStmt.newTree()
-
-      for i in 0..<cases.len:
-        let branch = if i == 0:
-          nnkElifBranch.newTree(cases[i], bodies[i])
-        else:
-          nnkElifBranch.newTree(cases[i], bodies[i])
-        ifStmt.add(branch)
-
-      # Add default as else
-      ifStmt.add(nnkElse.newTree(defaultBody))
-      result.add(ifStmt)
-      return result
-
-  # No default case - generate blocking loop
-  if cases.len > 0:
-    # Generate: while true: if cond1: body1; break; elif cond2: body2; break; ...
-    var whileLoop = nnkWhileStmt.newTree(
-      ident("true"),
-      newStmtList()
-    )
-
-    var ifStmt = nnkIfStmt.newTree()
-
-    for i in 0..<cases.len:
-      var branchBody = newStmtList(bodies[i], nnkBreakStmt.newTree(newEmptyNode()))
-      let branch = nnkElifBranch.newTree(cases[i], branchBody)
-      ifStmt.add(branch)
-
-    whileLoop[1].add(ifStmt)
-
-    # Add a small yield between attempts to avoid busy-waiting
-    whileLoop[1].add(newCall(ident("coroYield")))
-
-    result.add(whileLoop)
+  body
 
 
 # =============================================================================

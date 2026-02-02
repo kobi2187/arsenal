@@ -9,25 +9,7 @@ import ../src/arsenal/concurrency/channels/channel
 import ../src/arsenal/concurrency/coroutines/coroutine
 import ../src/arsenal/concurrency/scheduler
 
-# =============================================================================
-# Test Helpers
-# =============================================================================
-
-var testsPassed = 0
-var testsFailed = 0
-
-template test(name: string, body: untyped) =
-  try:
-    body
-    echo "  [OK] ", name
-    inc testsPassed
-  except CatchableError as e:
-    echo "  [FAIL] ", name, ": ", e.msg
-    inc testsFailed
-
-template check(cond: bool) =
-  if not cond:
-    raise newException(AssertionDefect, "Check failed")
+# Note: Test helpers provided by unittest framework in test_all.nim
 
 # =============================================================================
 # Test 1: Basic send/recv with sender first
@@ -175,10 +157,8 @@ proc testBufferedBasic() =
 # Main
 # =============================================================================
 
-when isMainModule:
-  echo "\n=== Channel Coroutine Tests ===\n"
-
-  echo "Unbuffered Channel:"
+# Tests are run via test_all.nim using unittest framework
+suite "Channel Coroutine Tests":
   test "send then recv (sender first)":
     testSenderFirst()
 
@@ -191,15 +171,9 @@ when isMainModule:
   test "ping pong":
     testPingPong()
 
-  echo "\nBuffered Channel:"
   test "trySend/tryRecv (no coroutines)":
     testBufferedBasic()
 
   # Note: Buffered channel with coroutine blocking has a bug
   # that needs further investigation (segfault on recv after send
   # fills buffer and blocks).
-
-  echo "\n=== Results: ", testsPassed, " passed, ", testsFailed, " failed ===\n"
-
-  if testsFailed > 0:
-    quit(1)

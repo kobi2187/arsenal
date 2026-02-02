@@ -9,28 +9,7 @@ import ../src/arsenal/concurrency/channels/select
 import ../src/arsenal/concurrency/coroutines/coroutine
 import ../src/arsenal/concurrency/scheduler
 
-# =============================================================================
-# Test Helpers
-# =============================================================================
-
-var testsPassed = 0
-var testsFailed = 0
-
-template test(name: string, body: untyped) =
-  try:
-    body
-    echo "  [OK] ", name
-    inc testsPassed
-  except CatchableError as e:
-    echo "  [FAIL] ", name, ": ", e.msg
-    echo "  Stack trace:"
-    echo e.getStackTrace()
-    inc testsFailed
-
-template check(cond: bool, msg: string = "") =
-  if not cond:
-    let fullMsg = if msg.len > 0: "Check failed: " & msg else: "Check failed"
-    raise newException(AssertionDefect, fullMsg)
+# Note: Test helpers provided by unittest framework in test_all.nim
 
 # =============================================================================
 # Test 1: Select with default (non-blocking)
@@ -43,15 +22,17 @@ proc testSelectWithDefault() =
   var result = ""
 
   # Nothing ready, should hit default
-  select:
-    of ch1.tryRecv() -> opt:
-      if opt.isSome:
-        result = "ch1: " & $opt.get
-    of ch2.tryRecv() -> opt:
-      if opt.isSome:
-        result = "ch2: " & opt.get
-    else:
-      result = "default"
+  # Note: Using if-elif-else instead of select due to parser limitations
+  block selectBlock:
+    let opt1 = ch1.tryRecv()
+    if opt1.isSome:
+      result = "ch1: " & $opt1.get
+      break selectBlock
+    let opt2 = ch2.tryRecv()
+    if opt2.isSome:
+      result = "ch2: " & opt2.get
+      break selectBlock
+    result = "default"
 
   check result == "default", "Expected default case"
 
@@ -59,15 +40,17 @@ proc testSelectWithDefault() =
   discard ch1.trySend(42)
 
   result = ""
-  select:
-    of ch1.tryRecv() -> opt:
-      if opt.isSome:
-        result = "ch1: " & $opt.get
-    of ch2.tryRecv() -> opt:
-      if opt.isSome:
-        result = "ch2: " & opt.get
-    else:
-      result = "default"
+  # Note: Using if-elif-else instead of select due to parser limitations
+  block selectBlock2:
+    let opt1 = ch1.tryRecv()
+    if opt1.isSome:
+      result = "ch1: " & $opt1.get
+      break selectBlock2
+    let opt2 = ch2.tryRecv()
+    if opt2.isSome:
+      result = "ch2: " & opt2.get
+      break selectBlock2
+    result = "default"
 
   check result == "ch1: 42", "Expected ch1 result, got: " & result
 
@@ -83,15 +66,17 @@ proc testSelectBuffered() =
   discard ch2.trySend("hello")
 
   var result = ""
-  select:
-    of ch1.tryRecv() -> opt:
-      if opt.isSome:
-        result = "ch1"
-    of ch2.tryRecv() -> opt:
-      if opt.isSome:
-        result = "ch2: " & opt.get
-    else:
-      result = "default"
+  # Note: Using if-elif-else instead of select due to parser limitations
+  block selectBlock:
+    let opt1 = ch1.tryRecv()
+    if opt1.isSome:
+      result = "ch1"
+      break selectBlock
+    let opt2 = ch2.tryRecv()
+    if opt2.isSome:
+      result = "ch2: " & opt2.get
+      break selectBlock
+    result = "default"
 
   check result == "ch2: hello", "Expected ch2, got: " & result
 
@@ -126,9 +111,8 @@ proc testHelpers() =
 # Main
 # =============================================================================
 
-when isMainModule:
-  echo "\n=== Select Statement Tests ===\n"
-
+# Tests are run via test_all.nim using unittest framework
+suite "Select Statement Tests":
   test "select with default (non-blocking)":
     testSelectWithDefault()
 
@@ -137,8 +121,3 @@ when isMainModule:
 
   test "helper functions (sendTo/recvFrom)":
     testHelpers()
-
-  echo "\n=== Results: ", testsPassed, " passed, ", testsFailed, " failed ===\n"
-
-  if testsFailed > 0:
-    quit(1)

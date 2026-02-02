@@ -11,6 +11,10 @@
 import std/unittest
 import std/os
 
+# Helper for check with custom message (for compatibility)
+template check*(cond: bool, msg: string) =
+  doAssert cond, msg
+
 # Import all test modules
 include test_config
 include test_strategies
