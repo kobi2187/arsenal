@@ -1,7 +1,7 @@
 ## Benchmarks for Random Number Generators
 ## =========================================
 
-import std/[times, strformat, random]
+import std/[times, strformat, random, sugar, algorithm]
 import ../src/arsenal/random/rng
 
 proc benchmark(name: string, iterations: int, fn: proc()) =

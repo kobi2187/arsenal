@@ -1,7 +1,7 @@
 ## Benchmarks for Hash Functions
 ## ===============================
 
-import std/[times, strformat, random]
+import std/[times, strformat, random, sugar, algorithm]
 import ../src/arsenal/hashing/hashers/xxhash64
 import ../src/arsenal/hashing/hashers/wyhash
 

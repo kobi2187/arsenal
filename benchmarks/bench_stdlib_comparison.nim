@@ -9,7 +9,7 @@ import std/[
 ]
 
 # Arsenal imports
-import ../src/arsenal/sorting/pdqsort
+import ../src/arsenal/algorithms/sorting/pdqsort
 import ../src/arsenal/hashing/hashers/[xxhash64, wyhash]
 import ../src/arsenal/strings/simd_search
 import ../src/arsenal/collections/roaring
@@ -83,9 +83,9 @@ for i in 0..<LARGE_SIZE:
   largeBytes[i] = byte(rand(255))
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "COMPREHENSIVE ARSENAL VS STDLIB BENCHMARKS"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 # ============================================================================
@@ -93,7 +93,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "1. SORTING ALGORITHMS"
-echo("-" * 80)
+echo(repeat("-", 80))
 echo ""
 echo "Test: Sort 256K integers"
 echo ""
@@ -138,7 +138,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "2. HASH FUNCTIONS"
-echo("-" * 80)
+echo(repeat("-", 80))
 echo ""
 echo "Test: Hash 1MB of data"
 echo ""
@@ -188,7 +188,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "3. STRING SEARCH"
-echo("-" * 80)
+echo(repeat("-", 80))
 echo ""
 
 # Create test strings
@@ -237,7 +237,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "4. BITSETS & INTEGER SETS"
-echo("-" * 80)
+echo(repeat("-", 80))
 echo ""
 echo "Test: Create set, add 10k integers, check membership 1M times"
 echo ""
@@ -271,7 +271,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "5. HASH TABLES / DICTIONARIES"
-echo("-" * 80)
+echo(repeat("-", 80))
 echo ""
 echo "Test: Insert 100k entries, lookup 1M times"
 echo ""
@@ -303,7 +303,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "6. PROBABILISTIC DATA STRUCTURES - CARDINALITY COUNTING"
-echo("-" * 80)
+echo(repeat("-", 80))
 echo ""
 echo "Test: Count unique items in stream of 1M integers"
 echo ""
@@ -351,7 +351,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "7. GRAPH ALGORITHMS - SINGLE SOURCE SHORTEST PATH"
-echo("-" * 80)
+echo(repeat("-", 80))
 echo ""
 echo "Test: Find shortest paths from source to all nodes"
 echo "Graph: 1024 nodes, random edges"
@@ -385,7 +385,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "8. SIGNAL PROCESSING - FAST FOURIER TRANSFORM"
-echo("-" * 80)
+echo(repeat("-", 80))
 echo ""
 echo "Test: Forward FFT on 1024-point complex signal"
 echo ""
@@ -429,7 +429,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "9. CONCURRENCY - MESSAGE PASSING"
-echo("-" * 80)
+echo(repeat("-", 80))
 echo ""
 echo "Test: Send 1M messages through queue"
 echo ""
@@ -456,9 +456,9 @@ echo ""
 # 10. MEMORY USAGE SUMMARY
 # ============================================================================
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SUMMARY: WHEN TO USE ARSENAL VS STDLIB"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "1. SORTING"
@@ -505,6 +505,6 @@ echo "   Use Arsenal queues when: Millions of ops/sec, latency-sensitive"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "All benchmarks completed!"
-echo "=" * 80
+echo repeat("=", 80)

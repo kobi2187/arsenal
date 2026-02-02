@@ -9,12 +9,12 @@
 ##
 ## Arena allocators and custom memory management are critical for performance.
 
-import std/[times, strformat, random, sequtils]
+import std/[times, strformat, random, sequtils, strutils, sugar, algorithm]
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "MEMORY ALLOCATORS & ALLOCATION STRATEGIES"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 # ============================================================================
@@ -22,7 +22,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "1. DEFAULT ALLOCATOR - SYSTEM MALLOC/FREE"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Characteristics:"
@@ -64,7 +64,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "2. BUMP ALLOCATOR - FAST LINEAR ALLOCATION"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Characteristics:"
@@ -129,7 +129,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "3. POOL ALLOCATOR - EFFICIENT OBJECT RECYCLING"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Characteristics:"
@@ -194,7 +194,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "4. MIMALLOC - MICROSOFT'S ALLOCATOR"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Characteristics (C binding available):"
@@ -248,7 +248,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "5. ALLOCATION PATTERN COMPARISON"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Pattern 1: Temporary Processing"
@@ -280,7 +280,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "6. ALLOCATION THROUGHPUT COMPARISON"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Allocating 1M objects of 16 bytes:"
@@ -304,7 +304,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "7. FRAGMENTATION OVER TIME"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Scenario: Allocate 1000 objects, free every other one, repeat"
@@ -329,7 +329,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "8. WHEN TO USE EACH ALLOCATOR"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Use Bump Allocator when:"
@@ -367,7 +367,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "9. HYBRID ALLOCATION STRATEGIES"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Strategy 1: Bump for Temp, Pool for Objects"
@@ -396,7 +396,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "10. CODE EXAMPLES"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Example 1: Game Loop with Bump Allocator"
@@ -426,9 +426,9 @@ echo "    connectionPool.free(conn)"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SUMMARY"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "Allocator Comparison:"
@@ -453,6 +453,6 @@ echo "  - Optimal patterns: <1% in malloc"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "Memory allocators benchmarks completed!"
-echo "=" * 80
+echo repeat("=", 80)

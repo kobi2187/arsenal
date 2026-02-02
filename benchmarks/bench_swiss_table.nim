@@ -1,7 +1,7 @@
 ## Benchmarks for Swiss Table Hash Map
 ## =====================================
 
-import std/[times, strformat, random, hashes]
+import std/[times, strformat, random, hashes, sugar, algorithm]
 import ../src/arsenal/datastructures/hashtables/swiss_table
 
 proc benchmark(name: string, iterations: int, fn: proc()) =

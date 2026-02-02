@@ -11,12 +11,12 @@
 ##
 ## Arsenal provides production-quality audio processing that stdlib doesn't have.
 
-import std/[times, strformat, math, sequtils, complex]
+import std/[times, strformat, math, sequtils, complex, strutils, sugar, algorithm]
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "AUDIO & SIGNAL PROCESSING (DSP)"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 # ============================================================================
@@ -24,7 +24,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "1. FAST FOURIER TRANSFORM (FFT)"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "FFT Applications:"
@@ -78,7 +78,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "2. MDCT - MODIFIED DISCRETE COSINE TRANSFORM"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "MDCT Applications:"
@@ -126,7 +126,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "3. RESAMPLING - SAMPLE RATE CONVERSION"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Resampling Applications:"
@@ -172,7 +172,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "4. WINDOW FUNCTIONS - SPECTRAL ANALYSIS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Window Function Purpose:"
@@ -219,7 +219,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "5. RING BUFFERS - REAL-TIME AUDIO STREAMING"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Ring Buffer Characteristics:"
@@ -267,7 +267,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "6. DSP FILTERS - FREQUENCY SHAPING"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Filter Types:"
@@ -316,7 +316,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "7. COMPLETE AUDIO PROCESSING PIPELINE"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Professional Audio Workflow (Arsenal):"
@@ -357,7 +357,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "8. ARSENAL VS ALTERNATIVES"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Feature              | Stdlib | Arsenal | Notes"
@@ -382,7 +382,7 @@ echo ""
 # ============================================================================
 echo ""
 echo "9. REAL-TIME PROCESSING CONSTRAINTS"
-echo "-" * 80
+echo repeat("-", 80)
 echo ""
 
 echo "Requirements for real-time audio:"
@@ -410,9 +410,9 @@ echo "  Ultra-low latency: <5 ms with careful tuning"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "SUMMARY"
-echo "=" * 80
+echo repeat("=", 80)
 echo ""
 
 echo "FFT:"
@@ -456,6 +456,6 @@ echo "  - Can build complete audio processors"
 echo ""
 
 echo ""
-echo "=" * 80
+echo repeat("=", 80)
 echo "Audio/DSP benchmarks completed!"
-echo "=" * 80
+echo repeat("=", 80)

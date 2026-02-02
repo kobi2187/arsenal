@@ -1,7 +1,7 @@
 ## Benchmarks for Embedded HAL Operations
 ## ========================================
 
-import std/[times, strformat]
+import std/[times, strformat, sugar, algorithm]
 import ../src/arsenal/embedded/hal
 
 # Benchmark configuration
