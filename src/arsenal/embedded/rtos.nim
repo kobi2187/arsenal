@@ -36,6 +36,7 @@
 ## scheduler.run()
 ## ```
 
+import std/options
 import ../platform/config
 
 # =============================================================================
@@ -120,15 +121,18 @@ proc addTask*(sched: var RtosScheduler, fn: TaskFn, priority: TaskPriority = 128
   ## - Set up return address to task function
   ## - Initialize registers (depending on architecture)
 
+  # Allocate stack for the task
+  let stackBase = alloc(stackSize)
+
   var tcb = TaskControlBlock(
     id: sched.tasks.len.uint32,
     name: "task" & $sched.tasks.len,
     priority: priority,
     state: tsReady,
     fn: fn,
-    stackBase: nil,  # TODO: Allocate stack
+    stackBase: stackBase,
     stackSize: stackSize,
-    stackPointer: nil,
+    stackPointer: cast[pointer](cast[uint](stackBase) + stackSize),  # Stack grows downward
     ticksRemaining: 10,  # Default time slice
     wakeTime: 0
   )
@@ -223,7 +227,7 @@ proc contextSwitch*(sched: var RtosScheduler, fromTask, toTask: int) =
   # Stub - requires assembly implementation
   discard
 
-proc yield*(sched: var RtosScheduler) =
+proc taskYield*(sched: var RtosScheduler) =
   ## Yield CPU to another task (cooperative scheduling).
   ##
   ## IMPLEMENTATION:
@@ -348,7 +352,7 @@ proc lock*(m: var Mutex, sched: var RtosScheduler) =
     if sched.currentTask >= 0:
       m.waitQueue.add(sched.currentTask)
       sched.tasks[sched.currentTask].state = tsBlocked
-      yield(sched)
+      taskYield(sched)
 
 proc unlock*(m: var Mutex, sched: var RtosScheduler) =
   ## Release mutex. Wakes one waiting task.
