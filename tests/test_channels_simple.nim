@@ -5,9 +5,14 @@
 ## These are separate from unittest to avoid scheduler state issues.
 
 import std/options
+import std/unittest
 import ../src/arsenal/concurrency/channels/channel
 import ../src/arsenal/concurrency/coroutines/coroutine
 import ../src/arsenal/concurrency/scheduler
+
+# Helper for compatibility
+template check*(cond: bool, msg: string) =
+  doAssert cond, msg
 
 # Note: Test helpers provided by unittest framework in test_all.nim
 

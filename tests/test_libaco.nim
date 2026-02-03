@@ -6,7 +6,7 @@
 ## a main_co as the "caller" context for all coroutines.
 
 import ../src/arsenal/concurrency/coroutines/libaco
-import std/times
+import std/[times, strutils]
 
 # =============================================================================
 # Global state for tests (cdecl procs can't capture)
@@ -147,24 +147,35 @@ proc benchCoro() {.cdecl.} =
 
 proc testBenchmark() =
   echo "=== Benchmark: Context Switch Time ==="
-  
+
   let co = aco_create(mainCo, sharedStack, 0, cast[AcoFuncPtr](benchCoro), nil)
-  
-  const iterations = 1_000_000
+
+  # Warmup run
+  echo "Warming up..."
+  for _ in 0..<10_000:
+    aco_resume(co)
+
+  # Reset counter and run actual benchmark
   benchYieldCount = 0
-  
-  let start = cpuTime()
+  const iterations = 1_000_000
+
+  echo "Running ", iterations, " iterations..."
+  let start = epochTime()
   for _ in 0..<iterations:
     aco_resume(co)
-  let elapsed = cpuTime() - start
-  
+  let elapsed = epochTime() - start
+
+  let msTotal = elapsed * 1000.0
   let nsPerSwitch = (elapsed * 1_000_000_000.0) / float(iterations)
-  echo "✓ ", iterations, " context switches in ", elapsed * 1000, " ms"
-  echo "✓ ", nsPerSwitch, " ns per switch"
-  echo "✓ benchYieldCount = ", benchYieldCount
-  
+  let switchesPerSec = float(iterations) / elapsed
+
+  echo "Results:"
+  echo "  Total time: ", formatFloat(msTotal, ffDecimal, 3), " ms"
+  echo "  Time per switch: ", formatFloat(nsPerSwitch, ffDecimal, 2), " ns"
+  echo "  Throughput: ", formatFloat(switchesPerSec / 1_000_000.0, ffDecimal, 2), " million switches/sec"
+  echo "  Iterations completed: ", benchYieldCount
+
   # Don't destroy - infinite loop coroutine
-  # Just leak it for the benchmark (or we could add a stop flag)
   echo "=== BENCHMARK COMPLETE ===\n"
 
 # =============================================================================

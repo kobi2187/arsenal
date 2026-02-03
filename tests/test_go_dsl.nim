@@ -5,6 +5,11 @@
 
 import ../src/arsenal/concurrency
 import std/options
+import std/unittest
+
+# Helper for compatibility
+template check*(cond: bool, msg: string) =
+  doAssert cond, msg
 
 # Note: Test helpers provided by unittest framework in test_all.nim
 

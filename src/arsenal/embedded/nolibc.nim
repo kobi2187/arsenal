@@ -326,6 +326,7 @@ proc intToStr*(value: int64, buf: ptr char, base: cint = 10): cint =
   ## puts(cast[cstring](addr buffer))  # Print: -12345
   ## ```
 
+  let bufArr = cast[ptr UncheckedArray[char]](buf)
   var n = value
   var i: cint = 0
   let negative = n < 0 and base == 10
@@ -335,31 +336,31 @@ proc intToStr*(value: int64, buf: ptr char, base: cint = 10): cint =
 
   # Special case: value is 0
   if value == 0:
-    buf[] = '0'
-    cast[ptr char](cast[uint](buf) + 1)[] = '\0'
+    bufArr[0] = '0'
+    bufArr[1] = '\0'
     return 1
 
   # Convert digits in reverse order
   while n != 0:
     let digit = (n mod base.int64).int
-    buf[i] = (if digit < 10: char(ord('0') + digit)
-              else: char(ord('a') + digit - 10))
+    bufArr[i] = (if digit < 10: char(ord('0') + digit)
+                 else: char(ord('a') + digit - 10))
     inc i
     n = n div base.int64
 
   # Add negative sign
   if negative:
-    buf[i] = '-'
+    bufArr[i] = '-'
     inc i
 
   # Reverse buffer
   for j in 0..<(i div 2):
-    let temp = buf[j]
-    buf[j] = buf[i - j - 1]
-    buf[i - j - 1] = temp
+    let temp = bufArr[j]
+    bufArr[j] = bufArr[i - j - 1]
+    bufArr[i - j - 1] = temp
 
   # Null terminate
-  buf[i] = '\0'
+  bufArr[i] = '\0'
   return i
 
 proc uintToStr*(value: uint64, buf: ptr char, base: cint = 10): cint =
@@ -425,10 +426,10 @@ elif defined(bare_metal):
 # Stack Protection (Compiler Requirements)
 # =============================================================================
 
-var __stack_chk_guard* {.exportc, used.}: uint
+var stack_chk_guard {.exportc: "__stack_chk_guard", used.}: uint
   ## Stack canary for -fstack-protector
 
-proc `__stack_chk_fail`*() {.exportc, noreturn.} =
+proc stack_chk_fail() {.exportc: "__stack_chk_fail", noreturn.} =
   ## Stack smashing detected.
   ## For embedded: Trigger fault or infinite loop
   ## For kernel: Panic
@@ -448,12 +449,12 @@ proc `__stack_chk_fail`*() {.exportc, noreturn.} =
 
 # Division helpers for architectures without hardware division
 when defined(arm) and not defined(arm64):
-  proc `__aeabi_uidiv`*(a, b: cuint): cuint {.exportc, cdecl.} =
+  proc aeabi_uidiv(a, b: cuint): cuint {.exportc: "__aeabi_uidiv", cdecl.} =
     ## Unsigned integer division (ARM EABI).
     ## IMPLEMENTATION: Software division algorithm
     a div b  # Stub - should implement long division
 
-  proc `__aeabi_idiv`*(a, b: cint): cint {.exportc, cdecl.} =
+  proc aeabi_idiv(a, b: cint): cint {.exportc: "__aeabi_idiv", cdecl.} =
     ## Signed integer division (ARM EABI).
     a div b  # Stub
 

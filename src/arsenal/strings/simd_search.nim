@@ -65,7 +65,7 @@ proc detectBackend*(): SimdBackend =
       {.emit: """
         __asm__ __volatile__(
           "cpuid"
-          : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+          : "=a"(`eax`), "=b"(`ebx`), "=c"(`ecx`), "=d"(`edx`)
           : "a"(1)
         );
       """.}
@@ -80,7 +80,7 @@ proc detectBackend*(): SimdBackend =
       {.emit: """
         __asm__ __volatile__(
           "cpuid"
-          : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+          : "=a"(`eax`), "=b"(`ebx`), "=c"(`ecx`), "=d"(`edx`)
           : "a"(7), "c"(0)
         );
       """.}
@@ -192,8 +192,8 @@ when defined(amd64) or defined(i386):
           __asm__ __volatile__(
             "pcmpestri $0, %%xmm0, %%xmm1"
             : "=c"(`result_idx`)
-            : "i"(12), "x"(needle_vec), "a"(`maxNeedleLen`),
-              "x"(haystack_vec), "d"(16)
+            : "i"(12), "x"(`needle_vec`), "a"(`maxNeedleLen`),
+              "x"(`haystack_vec`), "d"(16)
             : "cc"
           );
         """.}

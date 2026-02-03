@@ -149,7 +149,7 @@ when not defined(arsenal_no_crypto):
     CryptoRng* = object
       ## Cryptographically secure RNG.
       ## Uses libsodium's randombytes.
-      initialized: bool
+      initialized*: bool
 
   proc initCryptoRng*(): CryptoRng =
     ## Initialize crypto RNG.

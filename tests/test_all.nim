@@ -35,12 +35,14 @@ include test_go_dsl
 include test_hash_functions
 include test_hashing
 include test_io
-include test_libaco
-include test_minicoro
+# Note: test_libaco and test_minicoro are standalone backend tests, run separately
+# include test_libaco
+# include test_minicoro
 include test_mpmc
 include test_new_algorithms
 include test_nolibc
 include test_random
 include test_select
 include test_swiss_table
-include test_embedded_hal
+# Note: test_embedded_hal requires embedded hardware platform
+# include test_embedded_hal

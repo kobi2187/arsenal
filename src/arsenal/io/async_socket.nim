@@ -18,6 +18,7 @@
 import std/net
 import std/nativesockets
 import std/os
+import std/strutils
 import ./eventloop
 import ../concurrency/coroutines/coroutine
 
@@ -45,7 +46,7 @@ proc connect*(sock: AsyncSocket, loop: EventLoop, address: string, port: Port) =
     sock.sock.connect(address, port)
   except OSError as e:
     # EINPROGRESS (115) or EWOULDBLOCK means connection in progress
-    if e.errorCode == 115.OSErrorCode or "in progress" in e.msg or "would block" in e.msg:
+    if e.errorCode.int32 == 115 or "in progress" in e.msg or "would block" in e.msg:
       # Wait for socket to become writable (connection complete)
       loop.waitForWrite(sock.fd)
     else:
@@ -55,9 +56,8 @@ proc send*(sock: AsyncSocket, loop: EventLoop, data: string): int =
   ## Send data on the socket. Blocks current coroutine until data can be sent.
   while true:
     try:
-      result = sock.sock.send(data)
-      if result > 0:
-        return result
+      sock.sock.send(data)
+      return data.len
     except OSError as e:
       # EWOULDBLOCK/EAGAIN means socket buffer full
       if "would block" in e.msg or "again" in e.msg:
