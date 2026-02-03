@@ -4,6 +4,7 @@
 ## Tests for event loop and async socket integration with coroutines.
 
 import std/net
+import std/nativesockets
 import ../src/arsenal/io/eventloop
 import ../src/arsenal/io/async_socket
 import ../src/arsenal/concurrency/coroutines/coroutine
@@ -119,8 +120,3 @@ when isMainModule:
   echo "\nAsync I/O Tests:"
   test "echo server/client with event loop":
     testEchoServerClient()
-
-  echo "\n=== Results: ", testsPassed, " passed, ", testsFailed, " failed ===\n"
-
-  if testsFailed > 0:
-    quit(1)

@@ -21,6 +21,7 @@
 import std/options
 import std/tables
 import std/selectors  # Nim's cross-platform I/O multiplexing (epoll/kqueue/IOCP)
+import std/nativesockets  # For SocketHandle type
 import ../platform/config
 import ../concurrency/coroutines/coroutine
 import ../concurrency/scheduler
@@ -158,7 +159,7 @@ proc runOnce*(loop: EventLoop, timeoutMs: int = 100): bool =
 
   # Resume coroutines that have I/O ready
   for key in readyKeys:
-    let waiter = key.data
+    let waiter = loop.selector.getData(key.fd)
     let fd = key.fd.int
 
     # Unregister and remove waiter

@@ -8,14 +8,14 @@ import std/times
 # Test 1: Basic Context Switch
 # =============================================================================
 
-var testValue = 0
+var minicoroTestValue = 0
 
 proc coroFunc(co: ptr McoCoro) {.cdecl.} =
-  testValue = 1
+  minicoroTestValue = 1
   discard mco_yield(co)
-  testValue = 2
+  minicoroTestValue = 2
   discard mco_yield(co)
-  testValue = 3
+  minicoroTestValue = 3
   # Just return - coroutine becomes DEAD
 
 proc testBasicContextSwitch() =
@@ -29,25 +29,25 @@ proc testBasicContextSwitch() =
   doAssert mco_status(co) == MCO_SUSPENDED
   echo "✓ Coroutine created (suspended)"
   
-  testValue = 0
+  minicoroTestValue = 0
   
   # First resume
   checkResult mco_resume(co)
-  doAssert testValue == 1
+  doAssert minicoroTestValue == 1
   doAssert mco_status(co) == MCO_SUSPENDED
-  echo "✓ First resume: testValue = ", testValue
+  echo "✓ First resume: minicoroTestValue = ", minicoroTestValue
   
   # Second resume
   checkResult mco_resume(co)
-  doAssert testValue == 2
+  doAssert minicoroTestValue == 2
   doAssert mco_status(co) == MCO_SUSPENDED
-  echo "✓ Second resume: testValue = ", testValue
+  echo "✓ Second resume: minicoroTestValue = ", minicoroTestValue
   
   # Third resume - coroutine finishes
   checkResult mco_resume(co)
-  doAssert testValue == 3
+  doAssert minicoroTestValue == 3
   doAssert mco_status(co) == MCO_DEAD
-  echo "✓ Third resume: testValue = ", testValue, " (dead)"
+  echo "✓ Third resume: minicoroTestValue = ", minicoroTestValue, " (dead)"
   
   checkResult mco_destroy(co)
   echo "=== PASSED ===\n"
@@ -56,12 +56,12 @@ proc testBasicContextSwitch() =
 # Test 2: Multiple Coroutines
 # =============================================================================
 
-var multiCounter = 0
+var minicoroMultiCounter = 0
 
 proc countCoro(co: ptr McoCoro) {.cdecl.} =
-  inc multiCounter
+  inc minicoroMultiCounter
   discard mco_yield(co)
-  inc multiCounter
+  inc minicoroMultiCounter
 
 proc testMultipleCoroutines() =
   echo "=== Test: Multiple Coroutines ==="
@@ -73,21 +73,21 @@ proc testMultipleCoroutines() =
   checkResult mco_create(addr co2, addr desc)
   checkResult mco_create(addr co3, addr desc)
   
-  multiCounter = 0
+  minicoroMultiCounter = 0
   
   # First round
   checkResult mco_resume(co1)
   checkResult mco_resume(co2)
   checkResult mco_resume(co3)
-  doAssert multiCounter == 3
-  echo "✓ After first round: multiCounter = ", multiCounter
+  doAssert minicoroMultiCounter == 3
+  echo "✓ After first round: minicoroMultiCounter = ", minicoroMultiCounter
   
   # Second round - finish
   checkResult mco_resume(co1)
   checkResult mco_resume(co2)
   checkResult mco_resume(co3)
-  doAssert multiCounter == 6
-  echo "✓ After second round: multiCounter = ", multiCounter
+  doAssert minicoroMultiCounter == 6
+  echo "✓ After second round: minicoroMultiCounter = ", minicoroMultiCounter
   
   doAssert isDead(co1) and isDead(co2) and isDead(co3)
   echo "✓ All coroutines dead"
@@ -127,11 +127,11 @@ proc testUserData() =
 # Test 4: Benchmark
 # =============================================================================
 
-var benchCounter = 0
+var minicoroBenchCounter = 0
 
 proc benchCoro(co: ptr McoCoro) {.cdecl.} =
   while true:
-    inc benchCounter
+    inc minicoroBenchCounter
     discard mco_yield(co)
 
 proc testBenchmark() =
@@ -142,7 +142,7 @@ proc testBenchmark() =
   checkResult mco_create(addr co, addr desc)
   
   const iterations = 1_000_000
-  benchCounter = 0
+  minicoroBenchCounter = 0
   
   let start = cpuTime()
   for _ in 0..<iterations:
@@ -152,7 +152,7 @@ proc testBenchmark() =
   let nsPerSwitch = (elapsed * 1_000_000_000.0) / float(iterations)
   echo "✓ ", iterations, " context switches in ", elapsed * 1000, " ms"
   echo "✓ ", nsPerSwitch, " ns per switch"
-  echo "✓ benchCounter = ", benchCounter
+  echo "✓ minicoroBenchCounter = ", minicoroBenchCounter
   
   # Don't destroy - infinite loop (leak is fine for benchmark)
   echo "=== BENCHMARK COMPLETE ===\n"
