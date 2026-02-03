@@ -2,6 +2,7 @@
 nimcache/
 *.exe
 *.pdb
+*.out
 
 # OS
 .DS_Store
