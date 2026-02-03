@@ -35,8 +35,9 @@ include test_go_dsl
 include test_hash_functions
 include test_hashing
 include test_io
-include test_libaco
-include test_minicoro
+# Note: test_libaco and test_minicoro are standalone backend tests, run separately
+# include test_libaco
+# include test_minicoro
 include test_mpmc
 include test_new_algorithms
 include test_nolibc

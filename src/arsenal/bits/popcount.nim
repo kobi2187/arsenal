@@ -18,8 +18,13 @@
 ##
 ## Requires: nimsimd package for SIMD intrinsics
 
-when defined(amd64) or defined(i386):
+# Conditional SIMD support - requires nimsimd package
+# Set -d:useNimsimd to enable SIMD optimizations
+when defined(useNimsimd) and (defined(amd64) or defined(i386)):
   import nimsimd/[sse2, avx2]
+  const hasNimsimd = true
+else:
+  const hasNimsimd = false
 
 import std/bitops
 
@@ -68,7 +73,7 @@ proc csa(a, b, c: uint64): tuple[high, low: uint64] {.inline.} =
   result.high = (a and b) or (u and c)
   result.low = u xor c
 
-when defined(amd64):
+when defined(amd64) and hasNimsimd:
   proc csa256(a, b, c: M256i): tuple[high, low: M256i] {.inline.} =
     ## AVX2 carry-save adder for 256-bit vectors.
     let u = mm256_xor_si256(a, b)
@@ -165,7 +170,7 @@ proc harleySealScalar*(data: openArray[uint64]): int =
 ## - Use PSHUFB to lookup popcount in table
 ## - Sum results
 
-when defined(amd64):
+when defined(amd64) and hasNimsimd:
   # Lookup table for 4-bit popcount
   const POPCOUNT_4BIT = [0'u8, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4]
 
@@ -276,7 +281,7 @@ proc popcount*(data: openArray[uint64]): int =
 
 proc popcount*(data: openArray[uint8]): int =
   ## Count set bits in byte array.
-  when defined(amd64) and defined(avx2):
+  when defined(amd64) and defined(avx2) and hasNimsimd:
     if data.len >= 512:
       return harleySealAVX2(cast[ptr UncheckedArray[uint8]](data[0].unsafeAddr), data.len)
   popcountScalarBytes(data)
