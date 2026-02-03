@@ -1,6 +1,7 @@
 ## Tests for memory allocators
 
 import std/unittest
+import std/[times, strutils]
 import ../src/arsenal/memory/allocators/bump
 import ../src/arsenal/memory/allocators/pool
 
@@ -73,9 +74,26 @@ suite "Bump Allocator":
   test "performance - many small allocations":
     var bump = BumpAllocator.init(1024 * 1024)  # 1 MB
 
-    for i in 0..<100000:
+    # Warmup
+    for i in 0..<1000:
+      discard bump.alloc(8)
+    bump.reset()
+
+    const iterations = 100_000
+    let start = epochTime()
+    for i in 0..<iterations:
       let p = bump.alloc(8)
       check p != nil
+    let elapsed = epochTime() - start
+
+    let msTotal = elapsed * 1000.0
+    let nsPerAlloc = (elapsed * 1_000_000_000.0) / float(iterations)
+    let allocsPerSec = float(iterations) / elapsed
+
+    echo "  Bump Allocator Benchmark:"
+    echo "    Total time: ", formatFloat(msTotal, ffDecimal, 3), " ms"
+    echo "    Time per allocation: ", formatFloat(nsPerAlloc, ffDecimal, 2), " ns"
+    echo "    Throughput: ", formatFloat(allocsPerSec / 1_000_000.0, ffDecimal, 2), " M allocs/sec"
 
     bump.reset()
     check bump.isEmpty()
@@ -152,19 +170,43 @@ suite "Pool Allocator":
   test "performance - many allocations and deallocations":
     var pool = PoolAllocator[int].init()
 
-    # Allocate
-    var ptrs: seq[ptr int]
-    for i in 0..<1000:
-      ptrs.add(pool.alloc())
-
-    check pool.len() == 1000
-
-    # Deallocate all
-    for p in ptrs:
+    # Warmup
+    var warmupPtrs: seq[ptr int]
+    for i in 0..<100:
+      warmupPtrs.add(pool.alloc())
+    for p in warmupPtrs:
       pool.dealloc(p)
 
+    const iterations = 10_000
+    var ptrs: seq[ptr int]
+
+    # Benchmark allocations
+    let startAlloc = epochTime()
+    for i in 0..<iterations:
+      ptrs.add(pool.alloc())
+    let allocElapsed = epochTime() - startAlloc
+
+    check pool.len() == iterations
+
+    # Benchmark deallocations
+    let startDealloc = epochTime()
+    for p in ptrs:
+      pool.dealloc(p)
+    let deallocElapsed = epochTime() - startDealloc
+
     check pool.len() == 0
-    check pool.capacity() >= 1000  # Free list has capacity
+    check pool.capacity() >= iterations
+
+    let allocNs = (allocElapsed * 1_000_000_000.0) / float(iterations)
+    let deallocNs = (deallocElapsed * 1_000_000_000.0) / float(iterations)
+    let allocPerSec = float(iterations) / allocElapsed
+    let deallocPerSec = float(iterations) / deallocElapsed
+
+    echo "  Pool Allocator Benchmark:"
+    echo "    Alloc time per op: ", formatFloat(allocNs, ffDecimal, 2), " ns"
+    echo "    Dealloc time per op: ", formatFloat(deallocNs, ffDecimal, 2), " ns"
+    echo "    Alloc throughput: ", formatFloat(allocPerSec / 1_000_000.0, ffDecimal, 2), " M ops/sec"
+    echo "    Dealloc throughput: ", formatFloat(deallocPerSec / 1_000_000.0, ffDecimal, 2), " M ops/sec"
 
   test "works with custom types":
     type
