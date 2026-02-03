@@ -9,7 +9,7 @@
 ## - Harley-Seal Popcount (bits/popcount.nim)
 ## - Lock-Free Skip List (concurrent/skiplist.nim)
 
-import std/[random, times, strformat, math, options]
+import std/[random, times, strformat, strutils, math, options]
 
 # Import all new modules
 import ../src/arsenal/sketching/membership/binary_fuse
