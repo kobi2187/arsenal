@@ -7,7 +7,7 @@
 ## Performance: ~18 GB/s on modern hardware (fastest pure hash function)
 ## Quality: Excellent statistical properties
 
-import ./xxhash64
+import ../hasher
 export HashSeed, DefaultSeed
 
 type
@@ -36,6 +36,9 @@ const
   WY_PRIME_3 = 0x589965cc75374cc3'u64
   WY_PRIME_4 = 0x1d8e4e27c47d124f'u64
 
+# Forward declarations
+proc wymum*(a, b: uint64): uint64 {.inline.}
+
 # =============================================================================
 # One-shot Hashing
 # =============================================================================
@@ -50,7 +53,7 @@ proc wyread4(p: ptr byte): uint64 {.inline.} =
 
 proc wyread3(p: ptr byte, k: int): uint64 {.inline.} =
   ## Read 1-3 bytes from pointer
-  ((p[].uint64 shl 16) or (p[k shr 1][].uint64 shl 8) or p[k - 1][].uint64)
+  ((p[].uint64 shl 16) or (cast[ptr byte](cast[uint](p) + (k shr 1).uint)[].uint64 shl 8) or cast[ptr byte](cast[uint](p) + (k - 1).uint)[].uint64)
 
 proc wymix(a, b: uint64): uint64 {.inline.} =
   ## Final mixing function

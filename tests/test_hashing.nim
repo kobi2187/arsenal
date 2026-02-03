@@ -1,7 +1,7 @@
-## xxHash64 Unit Tests
-## Tests the real xxHash64 implementation against known test vectors
+## XxHash64 Unit Tests
+## Tests the real XxHash64 implementation against known test vectors
 
-import ../src/arsenal/hashing/hasher
+import ../src/arsenal/hashing/hashers/xxhash64
 import std/strutils
 
 # Known test vectors from xxHash official test suite
@@ -31,25 +31,22 @@ const TestVectors = [
 
 proc testOneShotHashing() =
   ## Test one-shot hashing with known vectors
-  echo "Testing xxHash64 one-shot hashing..."
+  echo "Testing XxHash64 one-shot hashing..."
   var passed = 0
   var failed = 0
 
-  for i, (data, seed, expected) in TestVectors:
-    let result = if data.len > 0:
-      xxHash64.hash(data.toOpenArrayByte(0, data.len - 1), HashSeed(seed))
-    else:
-      let emptyArr: seq[byte] = @[]
-      xxHash64.hash(emptyArr, HashSeed(seed))
+  for i in 0..<TestVectors.len:
+    let tv = TestVectors[i]
+    let result = XxHash64.hash(tv.data, HashSeed(tv.seed))
 
-    if result == expected:
+    if result == tv.expected:
       echo "  [✓] Test ", i + 1, ": PASSED"
       inc passed
     else:
       echo "  [✗] Test ", i + 1, ": FAILED"
-      echo "      Input: \"", data, "\""
-      echo "      Seed: ", seed
-      echo "      Expected: 0x", toHex(expected)
+      echo "      Input: \"", tv.data, "\""
+      echo "      Seed: ", tv.seed
+      echo "      Expected: 0x", toHex(tv.expected)
       echo "      Got:      0x", toHex(result)
       inc failed
 
@@ -59,7 +56,7 @@ proc testOneShotHashing() =
 
 proc testIncrementalHashing() =
   ## Test incremental hashing produces same results as one-shot
-  echo "\nTesting xxHash64 incremental hashing..."
+  echo "\nTesting XxHash64 incremental hashing..."
   var passed = 0
   var failed = 0
 
@@ -67,18 +64,17 @@ proc testIncrementalHashing() =
   let testData = "The quick brown fox jumps over the lazy dog"
 
   # One-shot hash
-  let oneShotResult = xxHash64.hash(
-    testData.toOpenArrayByte(0, testData.len - 1),
-    HashSeed(0)
+  let oneShotResult = XxHash64.hash(
+    testData.toOpenArrayByte(0, testData.len - 1)
   )
 
   # Incremental hash (single update)
-  var state1 = xxHash64.init(HashSeed(0))
+  var state1 = XxHash64.init()
   state1.update(testData.toOpenArrayByte(0, testData.len - 1))
   let singleUpdateResult = state1.finish()
 
   # Incremental hash (multiple updates)
-  var state2 = xxHash64.init(HashSeed(0))
+  var state2 = XxHash64.init()
   # Split into 3 parts
   let part1Len = 5
   let part2Len = 10
@@ -110,15 +106,15 @@ proc testIncrementalHashing() =
 
 proc testStringHashing() =
   ## Test string hashing convenience function
-  echo "\nTesting xxHash64 string hashing..."
+  echo "\nTesting XxHash64 string hashing..."
 
   let str1 = "hello"
   let str2 = "hello"
   let str3 = "world"
 
-  let hash1 = xxHash64.hash(str1, HashSeed(0))
-  let hash2 = xxHash64.hash(str2, HashSeed(0))
-  let hash3 = xxHash64.hash(str3, HashSeed(0))
+  let hash1 = XxHash64.hash(str1)
+  let hash2 = XxHash64.hash(str2)
+  let hash3 = XxHash64.hash(str3)
 
   if hash1 == hash2:
     echo "  [✓] Same strings produce same hash: PASSED"
@@ -136,12 +132,12 @@ proc testStringHashing() =
 
 proc testDifferentSeeds() =
   ## Test that different seeds produce different hashes
-  echo "\nTesting xxHash64 with different seeds..."
+  echo "\nTesting XxHash64 with different seeds..."
 
   let data = "test data"
-  let seed0 = xxHash64.hash(data.toOpenArrayByte(0, data.len - 1), HashSeed(0))
-  let seed1 = xxHash64.hash(data.toOpenArrayByte(0, data.len - 1), HashSeed(1))
-  let seed2 = xxHash64.hash(data.toOpenArrayByte(0, data.len - 1), HashSeed(0xDEADBEEF))
+  let seed0 = XxHash64.hash(data.toOpenArrayByte(0, data.len - 1))
+  let seed1 = XxHash64.hash(data.toOpenArrayByte(0, data.len - 1), HashSeed(1'u64))
+  let seed2 = XxHash64.hash(data.toOpenArrayByte(0, data.len - 1), HashSeed(0xDEADBEEF'u64))
 
   if seed0 != seed1:
     echo "  [✓] Different seeds produce different hashes: PASSED"
@@ -158,7 +154,7 @@ proc testDifferentSeeds() =
 # Run all tests
 when isMainModule:
   echo "═══════════════════════════════════════════════════════════════"
-  echo "xxHash64 Unit Tests"
+  echo "XxHash64 Unit Tests"
   echo "═══════════════════════════════════════════════════════════════"
 
   testOneShotHashing()

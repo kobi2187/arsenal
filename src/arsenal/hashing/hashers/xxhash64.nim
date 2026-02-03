@@ -7,12 +7,8 @@
 ## Performance: ~14 GB/s on modern hardware
 ## Quality: Excellent avalanche effect and collision resistance
 
-type
-  HashSeed* = distinct uint64
-    ## Seed for hash functions
-
-const
-  DefaultSeed* = HashSeed(0)
+import ../hasher
+export HashSeed, DefaultSeed
 
 type
   XxHash64* = object
