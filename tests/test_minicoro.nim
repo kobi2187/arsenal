@@ -2,7 +2,7 @@
 ## =======================
 
 import ../src/arsenal/concurrency/coroutines/minicoro
-import std/times
+import std/[times, strutils]
 
 # =============================================================================
 # Test 1: Basic Context Switch
@@ -136,24 +136,36 @@ proc benchCoro(co: ptr McoCoro) {.cdecl.} =
 
 proc testBenchmark() =
   echo "=== Benchmark: Context Switch Time ==="
-  
+
   var desc = mco_desc_init(benchCoro, 0)
   var co: ptr McoCoro
   checkResult mco_create(addr co, addr desc)
-  
-  const iterations = 1_000_000
+
+  # Warmup run
+  echo "Warming up..."
+  for _ in 0..<10_000:
+    discard mco_resume(co)
+
+  # Reset counter and run actual benchmark
   minicoroBenchCounter = 0
-  
-  let start = cpuTime()
+  const iterations = 1_000_000
+
+  echo "Running ", iterations, " iterations..."
+  let start = epochTime()
   for _ in 0..<iterations:
     discard mco_resume(co)
-  let elapsed = cpuTime() - start
-  
+  let elapsed = epochTime() - start
+
+  let msTotal = elapsed * 1000.0
   let nsPerSwitch = (elapsed * 1_000_000_000.0) / float(iterations)
-  echo "✓ ", iterations, " context switches in ", elapsed * 1000, " ms"
-  echo "✓ ", nsPerSwitch, " ns per switch"
-  echo "✓ minicoroBenchCounter = ", minicoroBenchCounter
-  
+  let switchesPerSec = float(iterations) / elapsed
+
+  echo "Results:"
+  echo "  Total time: ", formatFloat(msTotal, ffDecimal, 3), " ms"
+  echo "  Time per switch: ", formatFloat(nsPerSwitch, ffDecimal, 2), " ns"
+  echo "  Throughput: ", formatFloat(switchesPerSec / 1_000_000.0, ffDecimal, 2), " million switches/sec"
+  echo "  Iterations completed: ", minicoroBenchCounter
+
   # Don't destroy - infinite loop (leak is fine for benchmark)
   echo "=== BENCHMARK COMPLETE ===\n"
 
